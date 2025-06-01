@@ -125,8 +125,6 @@ function initFormEventListeners(form) {
     hideTimeEditPopup();
     form.querySelector('#startTime').value = formatTime(getCurrentTime());
   };
-
-  // 差分ボタン（btnSetDiff）は削除済み
 }
 
 // ★タイトル変更時に「新規追加」へ切り替え
@@ -178,15 +176,23 @@ function renderCurrentPlaylist() {
 window.renderCurrentPlaylist = renderCurrentPlaylist;
 
 // 曲を再生（Countermeasure 1: 再生開始検知後にseek＆タイマー設定）
+// ここで「start と end を比較して、end が start 以下なら full 再生扱い」とする
 function playSongSection(idx) {
   hideTimeEditPopup();
   const song = playlistData[idx];
   if (!song) return;
   currentPlayingIdx = idx;
 
-  // いったん「再生開始位置」と「終了時刻」を保存し、loadVideoは0秒スタート
+  // 再生開始位置は song.start で固定
   pendingSeekSec = song.start;
-  pendingEndSec = song.end;
+  // もし end > start の場合のみタイマーをセットするように
+  if (song.end > song.start) {
+    pendingEndSec = song.end;
+  } else {
+    pendingEndSec = null; // 0:00 の場合や full 再生の場合はタイマーなし
+  }
+
+  // 動画をロードして再生を開始 → 再生状態になったら seek&timer 設定
   setVideo({ videoId: song.videoId, seekSec: 0, endSec: null, autoPlay: true });
 
   renderCurrentPlaylist();
@@ -231,7 +237,7 @@ function setEndTimer(endSec) {
   cancelEndTimer();
   function check() {
     const cur = getCurrentTime();
-    if (cur >= endSec - 1) {  //←1秒の余裕
+    if (cur >= endSec - 1) {  // ←1秒の余裕
       pauseVideo();
       cancelEndTimer();
       setTimeout(() => playNextSong(), 300);
@@ -372,11 +378,13 @@ window.addEventListener('DOMContentLoaded', () => {
     // 再生中かどうかでボタン表示を切り替え
     if (event.data === YT.PlayerState.PLAYING) {
       btn.textContent = "⏸";
+
       // 対策1：動画が再生状態になったら seek とタイマー設定
       if (pendingSeekSec !== null) {
         seekTo(pendingSeekSec);
         pendingSeekSec = null;
       }
+      // ★ endSec が start より大きい場合のみタイマーをセットする
       if (pendingEndSec !== null) {
         setEndTimer(pendingEndSec);
         pendingEndSec = null;
@@ -384,7 +392,7 @@ window.addEventListener('DOMContentLoaded', () => {
     } else {
       btn.textContent = "▶";
     }
-    // 動画が終了（0）したら次の曲へ
+    // 動画が終了（ENDED）したら次の曲へ
     if (event.data === YT.PlayerState.ENDED) {
       setTimeout(() => playNextSong(), 300);
     }
@@ -409,7 +417,7 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('songVideoId').value = vid;
     setVideo({ videoId: vid, seekSec: 0 });
     if (!document.getElementById('songArticle').value) {
-      document.getElementById('songArticle').placeholder = "動画タイトル取得中.";
+      document.getElementById('songArticle').placeholder = "動画タイトル取得中...";
       const title = await fetchYouTubeTitle(vid);
       document.getElementById('songArticle').value = title;
       document.getElementById('songArticle').placeholder = "記事（自動取得/編集可）";
@@ -451,9 +459,8 @@ window.addEventListener('DOMContentLoaded', () => {
     csvBox.select();
     try {
       document.execCommand("copy");
-      // alertは不要
     } catch {
-      // alertは不要
+      // コピー失敗しても OK
     }
     if (window.Blob && window.URL && window.URL.createObjectURL) {
       const now = new Date();
