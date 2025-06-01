@@ -161,7 +161,7 @@ function playSongSection(idx) {
       setEndTimer(song.end);
     }
     renderCurrentPlaylist();
-  }, 350);
+  }, 700);
 }
 
 function editSong(idx) {
