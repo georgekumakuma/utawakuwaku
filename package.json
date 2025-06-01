@@ -1,0 +1,33 @@
+{
+  "name": "utawakuwaku",
+  "version": "1.0.0",
+  "description": "YouTube区間再生・プレイリスト管理ツール",
+  "main": "main-electron.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "build": {
+    "appId": "com.yourcompany.utawakuwaku",
+    "productName": "utawakuwaku",
+    "copyright": "Copyright © 2025 kumakuma",
+    "files": [
+      "**/*"
+    ],
+    "directories": {
+      "buildResources": "resources"
+    },
+    "win": {
+      "icon": "icon.png",
+      "target": "nsis"
+    }
+  },
+  "devDependencies": {
+    "electron": "^27.1.0",
+    "electron-builder": "^24.13.3"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

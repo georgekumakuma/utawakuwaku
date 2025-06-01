@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>utawakuwaku</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    body { 
+      font-family: "Segoe UI", "Yu Gothic", sans-serif; 
+      margin:0; padding:0; 
+      background:#181c25; 
+      color:#f7f7f7;
+      font-size: 0.93em;
+    }
+    .container { 
+      max-width:900px; 
+      margin:24px auto; 
+      background:#232944f0; 
+      box-shadow:0 4px 22px #18205055; 
+      border-radius:13px; 
+      padding:18px 7px 22px 7px; 
+      border:1.5px solid #263655;
+    }
+    h1 { 
+      text-align:center; 
+      margin-top:0; 
+      font-size:1.12em; 
+      color:#b6cafc;
+      letter-spacing:0.04em;
+    }
+    .player-area { margin-bottom:14px;}
+    .player-controls { 
+      display:flex; justify-content:center; align-items:center; gap:5px; margin:6px 0 2px 0;
+    }
+    .player-controls button { 
+      font-size:1.08em; background:#233d5e; border:none; color:#ffe788; border-radius:6px; 
+      padding:2.5px 10px; cursor:pointer; min-width:27px; transition:background 0.15s, color 0.15s; line-height:1.15em; margin:0 1.5px;
+    }
+    .player-controls button:hover, .player-controls .active { background:#ffe788; color:#233d5e;}
+    #shuffleBtn { font-size:1em; background:#39588c; color:#fff; padding:3px 10px; border-radius:8px; border:none; font-weight:bold;}
+    #shuffleBtn.active { background:#ff8c7b !important; color:#fff !important;}
+    .flex { display:flex; gap:9px; align-items:center;}
+    input[type="text"], input[type="number"] { 
+      padding:4px 7px; 
+      border-radius:6px; 
+      border:1.2px solid #365a94; 
+      min-width:52px; 
+      font-size:1em; 
+      background:#22304a; 
+      color:#fff; 
+      outline:none; 
+      max-width:240px;
+    }
+    input[type="text"]:focus, input[type="number"]:focus { border:1.5px solid #9bd1fa; background:#28426a;}
+    #songTitle { min-width:170px; max-width:340px; width:33vw; font-size:1em;}
+    #songArticle { margin-left:6px; background:#262d3f; border-color:#41577e; color:#ccddf9;}
+    #songVideoId { min-width:60px; max-width:110px; width:10vw; font-size:0.98em;}
+    #startTime, #endTime { min-width:66px; max-width:90px; width:7vw; font-size:0.98em;}
+    .playlist { margin:0; padding:0; list-style:none;}
+    .playlist-item { 
+      display:flex; align-items:center; justify-content:flex-start; 
+      background:#232d4669; margin-bottom:2px; border-radius:6px; 
+      padding:2px 5px; transition:background 0.15s; cursor:grab; border-left:3px solid #60aaff55; 
+      font-size:0.90em; min-height:26px; gap:6px; line-height:1.22; user-select:none;
+    }
+    .playlist-item.playing { background:#274d7d !important; border-left:4.5px solid #ffe788 !important; color:#fff !important; font-weight:bold;}
+    .meta-title { flex:2.0; min-width:70px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+    .meta-article { flex:1.10; color:#d4dcf7; font-size:0.91em; min-width:40px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+    .meta-video { flex:0.6; font-family:monospace; font-size:0.97em; color:#8bd2ff; margin-right:4px;}
+    .meta-range { 
+      flex:0.65; text-align:center; letter-spacing:0.01em;
+      font-size:0.85em; color:#a7b6c6; white-space:nowrap;
+      margin-right:3px;
+    }
+    .meta-rating { flex:0.6; min-width:38px; text-align:left; font-size:1em;}
+    .playlist-controls { flex:0.38; display:flex; align-items:center; gap:2px; margin-left:1px;}
+    .playlist-controls button { border:none; background:none; font-size:1em; cursor:pointer; padding:0 2px; border-radius:3px; color:#c9e1ff;}
+    .playlist-controls button:hover { background:#41557e; color:#fff;}
+    .star { font-size:1em; vertical-align:middle; margin-right:0.01em; transition:color 0.14s;}
+    .star.s1 { color:#74b8ff;} .star.s2 { color:#79e6c2;} .star.s3 { color:#ffe788;}
+    .star.s4 { color:#ffc77c;} .star.s5 { color:#ff98d9;} .star.s6 { color:#ff8c7b;} .star.s0 { color:#2a3855;}
+    .btn-main { 
+      background:linear-gradient(90deg, #384b73, #6fa9d5 90%); color:#fff; border:none; border-radius:7px; 
+      padding:6px 14px; font-size:0.96em; font-weight:bold; cursor:pointer; box-shadow:0 1px 2px #2b3350a0; 
+      transition:background 0.13s, color 0.13s;
+    }
+    .btn-main:hover { background:linear-gradient(90deg, #4c6c9c, #7dd9ff 80%); color:#fff;}
+    .csv-buttons { display:flex; gap:10px; margin-top:6px;}
+    .yt-iframe { 
+      border-radius:8px; border:2px solid #355a85; margin-bottom:0; width:100%; min-width:130px; min-height:130px; 
+      aspect-ratio:16/9; background:#181c2a; display:block; box-shadow:0 3px 18px #22294d70; max-width:98vw;
+    }
+    #timeEditPopup { display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:#000a; z-index:10000; justify-content:center; align-items:center;}
+    #timeEditPopupInner { background:#232944;padding:24px 32px;border-radius:13px;box-shadow:0 2px 32px #000b;color:#fff; min-width:260px; text-align:center;}
+    #timeEditPopup input[type="text"] { font-size:1.1em;padding:6px 12px;border-radius:7px;border:1.3px solid #456;min-width:95px;background:#1a2238; color:#fff;margin-bottom:10px;}
+    #timeEditPopup button { padding:6px 16px;margin:0 7px;border-radius:6px;border:none;background:#39588c;color:#fff;font-size:1em; transition:background 0.13s;}
+    #timeEditPopup button:hover { background:#ffe788;color:#233d5e;}
+    #csvTextOutput { width:96%; min-height:100px; background:#1a2338; color:#fff; border-radius:7px; border:1.3px solid #456; font-size:1em; margin-top:12px; display:none; }
+    /* ドラッグ中の枠 */
+    .playlist-item.dragging { opacity:0.54; background:#384c6f99 !important; }
+    @media (max-width:600px) {
+      h1 { font-size:1em;}
+      .yt-iframe { min-width:55vw;}
+      .playlist-item { font-size:0.83em;}
+      #timeEditPopupInner { min-width:90vw; }
+      #songTitle { min-width:90px; max-width:180px; width:40vw;}
+      #songVideoId { min-width:42px; max-width:65px; width:13vw;}
+      #startTime, #endTime { min-width:50px; max-width:65px; width:11vw;}
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>utawakuwaku</h1>
+    <div class="section player-area">
+      <form id="videoForm" class="flex" autocomplete="off" style="margin-bottom:3px;">
+        <label for="ytUrl">YouTube動画URLまたはID:</label>
+        <input type="text" id="ytUrl" size="23" autocomplete="off" required>
+        <button type="submit" class="btn-main">読み込み</button>
+      </form>
+      <div id="ytPlayerContainer">
+        <div id="ytPlayer" class="yt-iframe"></div>
+      </div>
+      <div class="player-controls">
+        <button id="btnPrev" title="前へ">⏮</button>
+        <button id="btnPlayPause" title="再生/一時停止">▶</button>
+        <button id="btnStop" title="停止">■</button>
+        <button id="btnNext" title="次へ">⏭</button>
+        <button id="shuffleBtn" title="シャッフル再生">🔀</button>
+      </div>
+    </div>
+    <div class="section">
+      <form id="songForm" autocomplete="off">
+        <div class="flex" style="margin-bottom:5px">
+          <label for="songTitle">曲・シーン名:</label>
+          <input type="text" id="songTitle" required placeholder="曲名やシーン名">
+          <input type="text" id="songArticle" placeholder="記事（自動取得/編集可）">
+        </div>
+        <div class="flex" style="margin-bottom:5px">
+          <label for="songVideoId">動画ID:</label>
+          <input type="text" id="songVideoId" size="10" placeholder="動画ID">
+          <label for="startTime" style="margin-left:8px;">開始:</label>
+          <input type="text" id="startTime" size="8" placeholder="hh:mm:ss">
+          <button type="button" id="btnEditStart">🖉</button>
+          <label for="endTime" style="margin-left:8px;">終了:</label>
+          <input type="text" id="endTime" size="8" placeholder="hh:mm:ss">
+          <button type="button" id="btnEditEnd">🖉</button>
+          <button type="button" id="btnGetCurrent" style="margin-left:2px;">現在位置</button>
+          <!-- <button type="button" id="btnSetDiff" title="差分モード">＋差分</button> 削除 -->
+        </div>
+        <div class="flex" style="margin-bottom:4px">
+          <label>評価:</label>
+          <span id="ratingStars"></span>
+        </div>
+        <div class="flex">
+          <button type="submit" class="btn-main" id="btnAddSong">リストに追加</button>
+          <button type="button" class="btn-main" id="btnResetForm">リセット</button>
+        </div>
+      </form>
+    </div>
+    <div class="section">
+      <h3 style="margin:8px 0 3px 0;">プレイリスト（ドラッグで順番変更可）</h3>
+      <ul id="playlist" class="playlist"></ul>
+      <div class="csv-buttons">
+        <button type="button" class="btn-main" id="btnExportCSV">保存</button>
+        <input type="file" id="csvFileInput" accept=".csv" style="display:none;">
+        <button type="button" class="btn-main" id="btnImportCSV">CSV読み込み</button>
+      </div>
+      <textarea id="csvTextOutput" readonly></textarea>
+    </div>
+  </div>
+  <script type="module" src="main.js"></script>
+</body>
+</html>
