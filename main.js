@@ -50,7 +50,7 @@ async function loadPlaylistFromCacheOrDefault() {
   } else {
     try {
       const res = await fetch('utawakuwaku_playlist_default.csv');
-      if (!res.ok) throw new Error("HTTP " + res.status);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const text = await res.text();
       setPlaylistData(csvToPlaylist(text));
       savePlaylistToCache();
