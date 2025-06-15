@@ -1,4 +1,3 @@
-```javascript
 // main.js
 
 import { showTimeEditPopup, hideTimeEditPopup } from './popup.js';
@@ -455,4 +454,3 @@ window.addEventListener('DOMContentLoaded', async () => {
     reader.readAsText(file);
   };
 });
-```
