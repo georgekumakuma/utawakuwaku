@@ -3,46 +3,10 @@
 
 export const CSV_HEADER = "videoId,title,start,end,rating,article";
 
-// デフォルトプレイリスト
-const defaultPlaylist = [
-  {
-    videoId: "dQw4w9WgXcQ",
-    title: "Never Gonna Give You Up",
-    start: 0,
-    end: 60,
-    rating: 5,
-    article: "Rick Astley - 定番の名曲"
-  },
-  {
-    videoId: "kJQP7kiw5Fk",
-    title: "Despacito",
-    start: 30,
-    end: 90,
-    rating: 4,
-    article: "Luis Fonsi ft. Daddy Yankee - 世界的ヒット曲"
-  },
-  {
-    videoId: "fJ9rUzIMcZQ",
-    title: "Bohemian Rhapsody",
-    start: 60,
-    end: 180,
-    rating: 6,
-    article: "Queen - 伝説的な楽曲"
-  },
-  {
-    videoId: "JGwWNGJdvx8",
-    title: "Shape of You",
-    start: 15,
-    end: 75,
-    rating: 4,
-    article: "Ed Sheeran - ポップスの代表曲"
-  }
-];
+export let playlistData = [];
 
-export let playlistData = [...defaultPlaylist];
-
-// プレイリストの初期化（ローカルストレージから読み込み、なければデフォルト使用）
-export function initializePlaylist() {
+// プレイリストの初期化（ローカルストレージから読み込み、なければデフォルトCSVから読み込み）
+export async function initializePlaylist() {
   try {
     const saved = localStorage.getItem('utawakuwaku_playlist');
     if (saved) {
@@ -56,10 +20,25 @@ export function initializePlaylist() {
     console.warn('ローカルストレージからの読み込みに失敗:', e);
   }
   
-  // デフォルトプレイリストを使用
-  playlistData = [...defaultPlaylist];
-  savePlaylistToStorage(); // デフォルトを保存
-  return false; // デフォルトデータを使用
+  // デフォルトCSVファイルから読み込み
+  try {
+    const response = await fetch('./playlists/utawakuwaku_playlist_default.csv');
+    if (response.ok) {
+      const csvText = await response.text();
+      const defaultPlaylist = csvToPlaylist(csvText);
+      if (defaultPlaylist.length > 0) {
+        playlistData = defaultPlaylist;
+        savePlaylistToStorage(); // デフォルトを保存
+        return false; // デフォルトデータを使用
+      }
+    }
+  } catch (e) {
+    console.warn('デフォルトCSVファイルの読み込みに失敗:', e);
+  }
+  
+  // 最後の手段として空のプレイリスト
+  playlistData = [];
+  return false;
 }
 
 // プレイリストをローカルストレージに保存
@@ -77,10 +56,26 @@ export function setPlaylistData(arr) {
 }
 
 // デフォルトプレイリストに戻す
-export function resetToDefaultPlaylist() {
-  playlistData = [...defaultPlaylist];
+export async function resetToDefaultPlaylist() {
+  try {
+    const response = await fetch('./playlists/utawakuwaku_playlist_default.csv');
+    if (response.ok) {
+      const csvText = await response.text();
+      const defaultPlaylist = csvToPlaylist(csvText);
+      if (defaultPlaylist.length > 0) {
+        playlistData = defaultPlaylist;
+        savePlaylistToStorage();
+        return playlistData.length;
+      }
+    }
+  } catch (e) {
+    console.warn('デフォルトCSVファイルの読み込みに失敗:', e);
+  }
+  
+  // CSVファイルの読み込みに失敗した場合は空にする
+  playlistData = [];
   savePlaylistToStorage();
-  return playlistData.length;
+  return 0;
 }
 
 export function playlistToCSV(arr = playlistData) {
@@ -123,10 +118,11 @@ export function csvToPlaylist(text) {
   });
 }
 
-// プレイリストをHTMLで描画（改良版：現代的UI）
+// プレイリストをHTMLで描画（改良版：現代的UI + 編集状態表示）
 export function renderPlaylist({ 
   ulId = "playlist", 
   currentPlayingIdx = null, 
+  editingIdx = null,
   onPlay, 
   onEdit, 
   onDelete 
@@ -136,10 +132,10 @@ export function renderPlaylist({
   
   if (playlistData.length === 0) {
     ul.innerHTML = `
-      <div style="text-align: center; padding: 40px; color: var(--text-muted);">
-        <div style="font-size: 48px; margin-bottom: 16px;">🎵</div>
+      <div style="text-align: center; padding: 30px; color: var(--text-muted);">
+        <div style="font-size: 48px; margin-bottom: 12px;">🎵</div>
         <p>プレイリストが空です</p>
-        <p style="font-size: 14px;">上記のフォームから曲を追加してください</p>
+        <p style="font-size: 12px;">上記のフォームから曲を追加してください</p>
       </div>
     `;
     return;
@@ -147,7 +143,11 @@ export function renderPlaylist({
 
   playlistData.forEach((song, idx) => {
     const li = document.createElement('li');
-    li.className = 'playlist-item' + (idx === currentPlayingIdx ? ' playing' : '');
+    let className = 'playlist-item';
+    if (idx === currentPlayingIdx) className += ' playing';
+    if (idx === editingIdx) className += ' editing';
+    
+    li.className = className;
     li.tabIndex = 0;
     li.draggable = true;
     li.setAttribute("data-idx", idx);
@@ -165,6 +165,8 @@ export function renderPlaylist({
         <button class="btn btn-secondary btn-icon edit-btn" title="編集">✏️</button>
         <button class="btn btn-secondary btn-icon delete-btn" title="削除">🗑️</button>
       </div>
+      ${idx === currentPlayingIdx ? '<div class="now-playing-indicator">PLAYING</div>' : ''}
+      ${idx === editingIdx ? '<div class="editing-indicator">EDITING</div>' : ''}
     `;
 
     // 各操作イベント

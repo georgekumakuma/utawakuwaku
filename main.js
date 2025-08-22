@@ -16,6 +16,74 @@ let editingIndex = -1;
 let selectedRating = 1;
 let shuffleOn = false;
 let editingTitleOriginal = ""; // ★編集前タイトル保存用
+let userSeekedManually = false; // ユーザーが手動でシークしたかを追跡
+let endTimerDisabled = false; // 終了タイマーを無効化するフラグ
+
+// テーマ管理
+let currentTheme = 0; // 0: 朝焼け, 1: 昼, 2: 夕焼け, 3: ミッドナイト
+const themes = [
+  { name: 'dawn', icon: '🌅', title: '朝焼けモード' },
+  { name: 'day', icon: '☀️', title: '昼モード' },
+  { name: 'sunset', icon: '🌆', title: '夕焼けモード' },
+  { name: 'midnight', icon: '🌙', title: 'ミッドナイトモード' }
+];
+
+// テーマ切り替え関数
+function switchTheme() {
+  currentTheme = (currentTheme + 1) % themes.length;
+  const theme = themes[currentTheme];
+  
+  // テーマ切り替えエフェクト
+  document.body.style.transform = 'scale(0.98)';
+  document.body.style.opacity = '0.8';
+  
+  setTimeout(() => {
+    // テーマを適用
+    if (theme.name === 'dawn') {
+      document.documentElement.removeAttribute('data-theme');
+    } else {
+      document.documentElement.setAttribute('data-theme', theme.name);
+    }
+    
+    // インジケーター更新
+    const indicator = document.getElementById('themeIndicator');
+    if (indicator) {
+      indicator.textContent = theme.icon;
+      indicator.title = theme.title;
+    }
+    
+    // ローカルストレージに保存
+    localStorage.setItem('utawakuwaku_theme', currentTheme.toString());
+    
+    // トースト表示
+    showToast(`${theme.title}に切り替えました`, 2000);
+    
+    // エフェクト復元
+    document.body.style.transform = 'scale(1)';
+    document.body.style.opacity = '1';
+  }, 150);
+}
+
+// テーマを初期化
+function initializeTheme() {
+  const savedTheme = localStorage.getItem('utawakuwaku_theme');
+  if (savedTheme !== null) {
+    currentTheme = parseInt(savedTheme, 10) % themes.length;
+    const theme = themes[currentTheme];
+    
+    if (theme.name === 'dawn') {
+      document.documentElement.removeAttribute('data-theme');
+    } else {
+      document.documentElement.setAttribute('data-theme', theme.name);
+    }
+    
+    const indicator = document.getElementById('themeIndicator');
+    if (indicator) {
+      indicator.textContent = theme.icon;
+      indicator.title = theme.title;
+    }
+  }
+}
 
 // YouTube動画長取得
 async function getYouTubeDuration() {
@@ -65,12 +133,18 @@ function initFormEventListeners(form) {
         editingIndex = -1;
         editingTitleOriginal = "";
         document.getElementById('btnAddSong').textContent = "リストに追加";
+        // 編集中インジケーターを隠す
+        const indicator = document.getElementById('currentlyEditingIndicator');
+        if (indicator) indicator.style.display = 'none';
         showToast("新しい曲として追加しました");
       } else {
         playlistData[editingIndex] = song;
         editingIndex = -1;
         editingTitleOriginal = "";
         document.getElementById('btnAddSong').textContent = "リストに追加";
+        // 編集中インジケーターを隠す
+        const indicator = document.getElementById('currentlyEditingIndicator');
+        if (indicator) indicator.style.display = 'none';
         showToast("曲を更新しました");
       }
     } else {
@@ -102,9 +176,20 @@ function initFormEventListeners(form) {
       onCancel: () => {}
     });
   };
-  form.querySelector('#btnGetCurrent').onclick = () => {
+  const btnGetCurrent = form.querySelector('#btnGetCurrent');
+  if (btnGetCurrent) {
+    btnGetCurrent.onclick = () => {
+      hideTimeEditPopup();
+      form.querySelector('#startTime').value = formatTime(getCurrentTime());
+    };
+  }
+  form.querySelector('#btnGetCurrentStart').onclick = () => {
     hideTimeEditPopup();
     form.querySelector('#startTime').value = formatTime(getCurrentTime());
+  };
+  form.querySelector('#btnGetCurrentEnd').onclick = () => {
+    hideTimeEditPopup();
+    form.querySelector('#endTime').value = formatTime(getCurrentTime());
   };
   // btnSetDiff（差分機能）は削除済み
 }
@@ -149,6 +234,7 @@ function renderCurrentPlaylist() {
   renderPlaylist({
     ulId: "playlist",
     currentPlayingIdx,
+    editingIdx: editingIndex,
     onPlay: playSongSection,
     onEdit: editSong,
     onDelete: deleteSong,
@@ -157,7 +243,7 @@ function renderCurrentPlaylist() {
 }
 window.renderCurrentPlaylist = renderCurrentPlaylist;
 
-// プレイリストの曲再生（改良版：フェード機能付き）
+// プレイリストの曲再生（改良版：フェード機能付き + フォーム自動表示）
 async function playSongSection(idx) {
   hideTimeEditPopup();
   const song = playlistData[idx];
@@ -169,6 +255,11 @@ async function playSongSection(idx) {
   }
   
   currentPlayingIdx = idx;
+  userSeekedManually = false;
+  endTimerDisabled = false;
+  
+  // 再生中の曲をフォームに自動表示
+  autoFillFormWithCurrentSong(idx);
   
   // フェードイン付きで新しい動画を開始
   setVideo({ 
@@ -198,6 +289,35 @@ async function playSongSection(idx) {
   }, 800); // 少し長めに待つ
 }
 
+// 再生中の曲をフォームに自動表示する機能
+function autoFillFormWithCurrentSong(idx) {
+  if (editingIndex >= 0) return; // 既に編集中の場合はスキップ
+  
+  const song = playlistData[idx];
+  if (!song) return;
+  
+  const form = document.getElementById('songForm');
+  form.querySelector('#songTitle').value = song.title;
+  form.querySelector('#songVideoId').value = song.videoId;
+  form.querySelector('#startTime').value = formatTime(song.start);
+  form.querySelector('#endTime').value = formatTime(song.end);
+  form.querySelector('#songArticle').value = song.article || "";
+  setRating(song.rating);
+  
+  // 編集状態に設定
+  editingIndex = idx;
+  editingTitleOriginal = song.title;
+  document.getElementById('btnAddSong').textContent = "更新";
+  
+  // 編集中であることを示すインジケーターを表示
+  const indicator = document.getElementById('currentlyEditingIndicator');
+  if (indicator) {
+    indicator.style.display = 'block';
+  }
+  
+  renderCurrentPlaylist();
+}
+
 function editSong(idx) {
   hideTimeEditPopup();
   cancelEndTimer();
@@ -212,7 +332,15 @@ function editSong(idx) {
   editingIndex = idx;
   editingTitleOriginal = song.title; // 編集元タイトル保存
   document.getElementById('btnAddSong').textContent = "更新";
+  
+  // 編集中であることを示すインジケーターを表示
+  const indicator = document.getElementById('currentlyEditingIndicator');
+  if (indicator) {
+    indicator.style.display = 'block';
+  }
+  
   monitorTitleForEdit(form);
+  renderCurrentPlaylist();
 }
 function deleteSong(idx) {
   hideTimeEditPopup();
@@ -231,24 +359,34 @@ function deleteSong(idx) {
   }
 }
 
-// 区間再生管理（改良版：より正確な監視）
+// 区間再生管理（改良版：ユーザーシーク検出機能付き）
 let endTimerRAF = null;
 let lastCheckedTime = 0;
+let seekDetectionThreshold = 1.5; // シーク検出のしきい値（秒）
 
 function setEndTimer(endSec) {
+  if (endTimerDisabled) return; // 終了タイマーが無効化されている場合はスキップ
+  
   cancelEndTimer();
   lastCheckedTime = 0;
   
   function check() {
+    if (endTimerDisabled) return; // チェック中に無効化された場合はスキップ
+    
     const cur = getCurrentTime();
     
-    // 逆方向ジャンプ検出（シーク発生時）
-    if (Math.abs(cur - lastCheckedTime) > 2 && lastCheckedTime > 0) {
-      lastCheckedTime = cur;
+    // 大きな時間の飛びを検出（ユーザーがシークした場合）
+    if (Math.abs(cur - lastCheckedTime) > seekDetectionThreshold && lastCheckedTime > 0) {
+      userSeekedManually = true;
+      // ユーザーがシークした場合、終了タイマーを無効化
+      endTimerDisabled = true;
+      cancelEndTimer();
+      showToast("手動シーク検出: 自動終了を無効化しました", 2000);
+      return;
     }
     
     // 終了時刻に近づいたら（0.3秒前からフェードアウト開始）
-    if (cur >= endSec - 0.3) {
+    if (cur >= endSec - 0.3 && !userSeekedManually) {
       cancelEndTimer();
       
       // フェードアウトして次の曲へ
@@ -396,9 +534,18 @@ function adjustWindowHeightByPlaylist() {
 }
 
 // ★ UI/イベント初期化
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
+  // テーマ初期化
+  initializeTheme();
+  
+  // テーマ切り替えイベント
+  const themeToggle = document.getElementById('themeToggle');
+  if (themeToggle) {
+    themeToggle.addEventListener('click', switchTheme);
+  }
+  
   // プレイリスト初期化
-  const hasExistingData = initializePlaylist();
+  const hasExistingData = await initializePlaylist();
   if (!hasExistingData) {
     showToast("デフォルトプレイリストを読み込みました", 4000);
   }
@@ -529,10 +676,10 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btnPrev').onclick = playPrevSong;
   
   // プレイリストリセットボタン
-  document.getElementById('btnResetPlaylist').onclick = () => {
+  document.getElementById('btnResetPlaylist').onclick = async () => {
     hideTimeEditPopup();
     if (confirm('プレイリストをデフォルトに戻しますか？\n現在のプレイリストは失われます。')) {
-      const count = resetToDefaultPlaylist();
+      const count = await resetToDefaultPlaylist();
       currentPlayingIdx = null;
       cancelEndTimer();
       stopVideo();
@@ -552,6 +699,13 @@ function resetForm() {
   setRating(1);
   editingIndex = -1;
   document.getElementById('btnAddSong').textContent = "リストに追加";
+  
+  // 編集中インジケーターを隠す
+  const indicator = document.getElementById('currentlyEditingIndicator');
+  if (indicator) {
+    indicator.style.display = 'none';
+  }
+  
   // 全input/textarea編集可
   form.querySelectorAll('input, textarea').forEach(inp => {
     inp.style.pointerEvents = '';
@@ -559,4 +713,6 @@ function resetForm() {
     inp.readOnly = false;
     inp.disabled = false;
   });
+  
+  renderCurrentPlaylist();
 }
