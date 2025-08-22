@@ -1,0 +1,73 @@
+# Node modules
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build and dist directories
+dist/
+build/
+out/
+*.exe
+*.app
+*.dmg
+*.pkg
+*.deb
+*.rpm
+*.snap
+*.appx
+
+# Version directories (old versions)
+ver00/
+ver01/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Logs
+logs
+*.log
+
+# Dependency directories
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# Package lock file (can be regenerated)
+package-lock.json
+
+# Large image files (temporarily)
+icon.png
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
+.env
+
+# IDE
+.vscode/
+*.code-workspace

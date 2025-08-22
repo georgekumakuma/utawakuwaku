@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>utawakuwaku</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    :root {
+      --primary-bg: #0a0e1a;
+      --secondary-bg: #1a1f2e;
+      --card-bg: #252a3a;
+      --accent-primary: #3b82f6;
+      --accent-secondary: #06b6d4;
+      --accent-success: #10b981;
+      --accent-warning: #f59e0b;
+      --accent-danger: #ef4444;
+      --text-primary: #f8fafc;
+      --text-secondary: #cbd5e1;
+      --text-muted: #64748b;
+      --border-color: #334155;
+      --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+      --gradient-primary: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      margin: 0; 
+      padding: 0; 
+      background: var(--primary-bg);
+      color: var(--text-primary);
+      font-size: 14px;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    .container { 
+      max-width: 1200px; 
+      margin: 20px auto; 
+      background: var(--secondary-bg);
+      box-shadow: var(--shadow);
+      border-radius: 16px; 
+      padding: 24px;
+      border: 1px solid var(--border-color);
+      backdrop-filter: blur(10px);
+    }
+
+    h1 { 
+      text-align: center; 
+      margin: 0 0 32px 0; 
+      font-size: 2rem; 
+      font-weight: 700;
+      background: var(--gradient-primary);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.02em;
+    }
+
+    .section {
+      margin-bottom: 32px;
+      padding: 24px;
+      background: var(--card-bg);
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+    }
+
+    .section h3 {
+      margin: 0 0 20px 0;
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .player-controls { 
+      display: flex; 
+      justify-content: center; 
+      align-items: center; 
+      gap: 12px; 
+      margin: 20px 0;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-decoration: none;
+      min-height: 40px;
+    }
+
+    .btn-primary {
+      background: var(--gradient-primary);
+      color: white;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+    }
+
+    .btn-secondary {
+      background: var(--card-bg);
+      color: var(--text-secondary);
+      border: 1px solid var(--border-color);
+    }
+
+    .btn-secondary:hover {
+      background: var(--border-color);
+      color: var(--text-primary);
+    }
+
+    .btn-icon {
+      padding: 8px;
+      min-width: 36px;
+      min-height: 36px;
+      font-size: 16px;
+    }
+
+    .btn-control {
+      background: rgba(59, 130, 246, 0.1);
+      color: var(--accent-primary);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    .btn-control:hover {
+      background: rgba(59, 130, 246, 0.2);
+      transform: scale(1.05);
+    }
+
+    .btn-control.active {
+      background: var(--accent-primary);
+      color: white;
+    }
+
+    input[type="text"], input[type="number"], textarea { 
+      padding: 12px 16px; 
+      border-radius: 8px; 
+      border: 1px solid var(--border-color); 
+      font-size: 14px; 
+      background: var(--primary-bg); 
+      color: var(--text-primary); 
+      outline: none; 
+      transition: all 0.2s ease;
+      width: 100%;
+    }
+
+    input[type="text"]:focus, input[type="number"]:focus, textarea:focus { 
+      border-color: var(--accent-primary); 
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .form-row {
+      display: flex;
+      gap: 16px;
+      align-items: end;
+    }
+
+    .form-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex: 1;
+    }
+
+    .form-field label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .time-input-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .time-input-group input {
+      width: 100px;
+    }
+
+    .playlist { 
+      margin: 0; 
+      padding: 0; 
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .playlist-item { 
+      display: flex; 
+      align-items: center; 
+      background: var(--primary-bg); 
+      border-radius: 12px; 
+      padding: 16px; 
+      transition: all 0.2s ease; 
+      cursor: pointer; 
+      border: 1px solid var(--border-color);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .playlist-item:hover {
+      background: rgba(59, 130, 246, 0.05);
+      border-color: rgba(59, 130, 246, 0.3);
+      transform: translateY(-1px);
+    }
+
+    .playlist-item.playing { 
+      background: rgba(59, 130, 246, 0.1);
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 20px rgba(59, 130, 246, 0.2);
+    }
+
+    .playlist-item.playing::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 4px;
+      height: 100%;
+      background: var(--gradient-primary);
+    }
+
+    .playlist-number {
+      font-weight: 700;
+      color: var(--text-muted);
+      min-width: 32px;
+      text-align: center;
+      font-size: 13px;
+    }
+
+    .playlist-item.playing .playlist-number {
+      color: var(--accent-primary);
+    }
+
+    .playlist-content {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 2fr 1.5fr 100px 80px 80px;
+      gap: 16px;
+      align-items: center;
+      margin: 0 16px;
+    }
+
+    .meta-title { 
+      font-weight: 600;
+      color: var(--text-primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .meta-article { 
+      color: var(--text-secondary);
+      font-size: 13px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .meta-video { 
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 12px;
+      color: var(--accent-secondary);
+      text-align: center;
+    }
+
+    .meta-range { 
+      font-size: 12px;
+      color: var(--text-muted);
+      text-align: center;
+      font-family: 'SF Mono', Monaco, monospace;
+    }
+
+    .meta-rating {
+      text-align: center;
+    }
+
+    .playlist-controls { 
+      display: flex; 
+      gap: 4px;
+    }
+
+    .star { 
+      font-size: 14px;
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+
+    .star.s1 { color: #74b8ff;} 
+    .star.s2 { color: #79e6c2;} 
+    .star.s3 { color: #ffe788;}
+    .star.s4 { color: #ffc77c;} 
+    .star.s5 { color: #ff98d9;} 
+    .star.s6 { color: #ff8c7b;} 
+    .star.s0 { color: var(--text-muted);}
+
+    .yt-iframe { 
+      border-radius: 12px; 
+      border: 1px solid var(--border-color); 
+      width: 100%; 
+      aspect-ratio: 16/9; 
+      background: var(--primary-bg);
+      box-shadow: var(--shadow);
+    }
+
+    #timeEditPopup { 
+      display: none; 
+      position: fixed; 
+      top: 0; 
+      left: 0; 
+      width: 100vw; 
+      height: 100vh; 
+      background: rgba(0, 0, 0, 0.7); 
+      backdrop-filter: blur(4px);
+      z-index: 10000; 
+      justify-content: center; 
+      align-items: center;
+    }
+
+    #timeEditPopupInner { 
+      background: var(--card-bg);
+      padding: 32px;
+      border-radius: 16px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+      color: var(--text-primary); 
+      min-width: 320px; 
+      text-align: center;
+      border: 1px solid var(--border-color);
+    }
+
+    #csvTextOutput { 
+      width: 100%; 
+      min-height: 120px; 
+      background: var(--primary-bg); 
+      color: var(--text-primary); 
+      border-radius: 8px; 
+      border: 1px solid var(--border-color); 
+      font-size: 13px; 
+      margin-top: 16px; 
+      display: none; 
+      font-family: 'SF Mono', Monaco, monospace;
+      resize: vertical;
+    }
+
+    .volume-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 16px;
+    }
+
+    .volume-slider {
+      width: 100px;
+      height: 4px;
+      background: var(--border-color);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: var(--card-bg);
+      color: var(--text-primary);
+      padding: 12px 20px;
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border-color);
+      transform: translateX(100%);
+      transition: transform 0.3s ease;
+      z-index: 10001;
+    }
+
+    .toast.show {
+      transform: translateX(0);
+    }
+
+    @media (max-width: 768px) {
+      .container {
+        margin: 10px;
+        padding: 16px;
+      }
+
+      h1 { 
+        font-size: 1.5rem;
+      }
+
+      .form-row {
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .playlist-content {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+
+      .meta-article, .meta-video, .meta-range {
+        display: none;
+      }
+
+      .player-controls {
+        gap: 8px;
+      }
+
+      .btn {
+        padding: 8px 12px;
+        font-size: 13px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎵 utawakuwaku</h1>
+    
+    <div class="section">
+      <h3>🎬 動画読み込み</h3>
+      <form id="videoForm" autocomplete="off">
+        <div class="form-row">
+          <div class="form-field" style="flex: 3;">
+            <label for="ytUrl">YouTube動画URLまたはID</label>
+            <input type="text" id="ytUrl" placeholder="https://youtube.com/watch?v=... または 動画ID" required>
+          </div>
+          <button type="submit" class="btn btn-primary">読み込み</button>
+        </div>
+      </form>
+      
+      <div id="ytPlayerContainer" style="margin-top: 20px;">
+        <div id="ytPlayer" class="yt-iframe"></div>
+      </div>
+      
+      <div class="player-controls">
+        <button id="btnPrev" class="btn btn-control btn-icon" title="前へ">⏮</button>
+        <button id="btnPlayPause" class="btn btn-control btn-icon" title="再生/一時停止">▶</button>
+        <button id="btnStop" class="btn btn-control btn-icon" title="停止">■</button>
+        <button id="btnNext" class="btn btn-control btn-icon" title="次へ">⏭</button>
+        <button id="shuffleBtn" class="btn btn-control" title="シャッフル再生">🔀</button>
+        
+        <div class="volume-control">
+          <span>🔊</span>
+          <input type="range" id="volumeSlider" class="volume-slider" min="0" max="100" value="100">
+          <span id="volumeDisplay">100%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>✏️ 曲・区間設定</h3>
+      <form id="songForm" autocomplete="off">
+        <div class="form-group">
+          <div class="form-row">
+            <div class="form-field" style="flex: 2;">
+              <label for="songTitle">曲・シーン名</label>
+              <input type="text" id="songTitle" placeholder="曲名やシーン名を入力" required>
+            </div>
+            <div class="form-field" style="flex: 2;">
+              <label for="songArticle">記事・説明</label>
+              <input type="text" id="songArticle" placeholder="記事（自動取得/編集可）">
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div class="form-row">
+            <div class="form-field">
+              <label for="songVideoId">動画ID</label>
+              <input type="text" id="songVideoId" placeholder="動画ID">
+            </div>
+            <div class="form-field">
+              <label for="startTime">開始時間</label>
+              <div class="time-input-group">
+                <input type="text" id="startTime" placeholder="0:00">
+                <button type="button" id="btnEditStart" class="btn btn-secondary btn-icon">✏️</button>
+              </div>
+            </div>
+            <div class="form-field">
+              <label for="endTime">終了時間</label>
+              <div class="time-input-group">
+                <input type="text" id="endTime" placeholder="1:30">
+                <button type="button" id="btnEditEnd" class="btn btn-secondary btn-icon">✏️</button>
+              </div>
+            </div>
+            <button type="button" id="btnGetCurrent" class="btn btn-secondary">現在位置</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>評価</label>
+          <span id="ratingStars"></span>
+        </div>
+
+        <div class="form-row">
+          <button type="submit" class="btn btn-primary" id="btnAddSong">リストに追加</button>
+          <button type="button" class="btn btn-secondary" id="btnResetForm">リセット</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="section">
+      <h3>📋 プレイリスト</h3>
+      <ul id="playlist" class="playlist"></ul>
+      
+      <div style="display: flex; gap: 12px; margin-top: 24px; flex-wrap: wrap;">
+        <button type="button" class="btn btn-primary" id="btnExportCSV">💾 エクスポート</button>
+        <input type="file" id="csvFileInput" accept=".csv" style="display:none;">
+        <button type="button" class="btn btn-secondary" id="btnImportCSV">📁 CSVインポート</button>
+        <button type="button" class="btn btn-accent" id="btnResetPlaylist">🔄 デフォルトに戻す</button>
+      </div>
+      
+      <textarea id="csvTextOutput" readonly placeholder="エクスポートされたCSVがここに表示されます"></textarea>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
