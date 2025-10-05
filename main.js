@@ -38,21 +38,86 @@ function savePlaylistToCache() {
   }
 }
 
+// sample_playlistフォルダ内のCSVファイル一覧を取得
+async function getSamplePlaylists() {
+  try {
+    const res = await fetch('sample_playlist/');
+    if (!res.ok) return [];
+    const text = await res.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(text, 'text/html');
+    const links = Array.from(doc.querySelectorAll('a'));
+    const csvFiles = links
+      .map(a => a.getAttribute('href'))
+      .filter(href => href && href.endsWith('.csv') && !href.includes('..'));
+    return csvFiles;
+  } catch (e) {
+    console.error('Failed to list sample playlists', e);
+    return [];
+  }
+}
+
 async function loadPlaylistFromCacheOrDefault() {
   const saved = localStorage.getItem('playlist');
   if (saved) {
     setPlaylistData(csvToPlaylist(saved));
   } else {
-    try {
-      const res = await fetch('utawakuwaku_playlist_default.csv');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const text = await res.text();
-      setPlaylistData(csvToPlaylist(text));
-      savePlaylistToCache();
-    } catch (e) {
-      console.error('Failed to load default playlist', e);
-      setPlaylistData([]);
-    }
+    // 初回起動時：プレイリスト選択ダイアログを表示
+    await showPlaylistSelectionDialog();
+  }
+}
+
+// プレイリスト選択ダイアログ表示
+async function showPlaylistSelectionDialog() {
+  const sampleFiles = await getSamplePlaylists();
+  const dialog = document.getElementById('playlistSelectionDialog');
+  const list = document.getElementById('playlistSelectionList');
+  
+  list.innerHTML = '';
+  
+  // デフォルトプレイリスト
+  const defaultItem = document.createElement('div');
+  defaultItem.className = 'playlist-selection-item';
+  defaultItem.innerHTML = `
+    <div class="playlist-selection-name">デフォルトプレイリスト</div>
+    <div class="playlist-selection-desc">utawakuwaku_playlist_default.csv</div>
+  `;
+  defaultItem.onclick = async () => {
+    await loadSpecificPlaylist('utawakuwaku_playlist_default.csv');
+    dialog.style.display = 'none';
+  };
+  list.appendChild(defaultItem);
+  
+  // サンプルプレイリスト一覧
+  for (const filename of sampleFiles) {
+    const item = document.createElement('div');
+    item.className = 'playlist-selection-item';
+    item.innerHTML = `
+      <div class="playlist-selection-name">${filename.replace('.csv', '')}</div>
+      <div class="playlist-selection-desc">sample_playlist/${filename}</div>
+    `;
+    item.onclick = async () => {
+      await loadSpecificPlaylist(`sample_playlist/${filename}`);
+      dialog.style.display = 'none';
+    };
+    list.appendChild(item);
+  }
+  
+  dialog.style.display = 'flex';
+}
+
+// 指定されたプレイリストを読み込み
+async function loadSpecificPlaylist(path) {
+  try {
+    const res = await fetch(path);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    setPlaylistData(csvToPlaylist(text));
+    savePlaylistToCache();
+  } catch (e) {
+    console.error('Failed to load playlist', e);
+    alert(`プレイリストの読み込みに失敗しました: ${path}`);
+    setPlaylistData([]);
   }
 }
 
@@ -184,13 +249,13 @@ function playSongSection(idx) {
   const song = playlistData[idx];
   if (!song) return;
   currentPlayingIdx = idx;
-  pendingSeekSec = song.start;
+  pendingSeekSec = null; // 最初から正しい位置で再生するので不要
   if (song.end > song.start) {
     pendingEndSec = song.end;
   } else {
     pendingEndSec = null;
   }
-  setVideo({ videoId: song.videoId, seekSec: 0, endSec: null, autoPlay: true });
+  setVideo({ videoId: song.videoId, seekSec: song.start, endSec: null, autoPlay: true });
   renderCurrentPlaylist();
 }
 

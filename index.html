@@ -96,6 +96,17 @@
     #timeEditPopup button { padding:6px 16px;margin:0 7px;border-radius:6px;border:none;background:#39588c;color:#fff;font-size:1em; transition:background 0.13s;}
     #timeEditPopup button:hover { background:#ffe788;color:#233d5e;}
     #csvTextOutput { width:96%; min-height:100px; background:#1a2338; color:#fff; border-radius:7px; border:1.3px solid #456; font-size:1em; margin-top:12px; display:none; }
+    
+    /* プレイリスト選択ダイアログ */
+    #playlistSelectionDialog { display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:#000d; z-index:10001; justify-content:center; align-items:center;}
+    #playlistSelectionInner { background:#232944; padding:28px 32px; border-radius:13px; box-shadow:0 4px 36px #000c; color:#fff; min-width:420px; max-width:600px; max-height:80vh; overflow-y:auto;}
+    #playlistSelectionInner h2 { margin:0 0 18px 0; font-size:1.3em; color:#b6cafc; text-align:center;}
+    #playlistSelectionList { display:flex; flex-direction:column; gap:10px;}
+    .playlist-selection-item { background:#2a3a55; padding:14px 18px; border-radius:8px; cursor:pointer; transition:background 0.2s, transform 0.15s; border:1.5px solid #3a5074;}
+    .playlist-selection-item:hover { background:#3a4f75; transform:translateY(-2px); border-color:#5a7fa4;}
+    .playlist-selection-name { font-size:1.1em; font-weight:bold; color:#ffe788; margin-bottom:4px;}
+    .playlist-selection-desc { font-size:0.9em; color:#a8c2e0;}
+    
     /* ドラッグ中の枠 */
     .playlist-item.dragging { opacity:0.54; background:#384c6f99 !important; }
     @media (max-width:600px) {
@@ -169,6 +180,15 @@
       <textarea id="csvTextOutput" readonly></textarea>
     </div>
   </div>
+  
+  <!-- プレイリスト選択ダイアログ -->
+  <div id="playlistSelectionDialog">
+    <div id="playlistSelectionInner">
+      <h2>プレイリストを選択</h2>
+      <div id="playlistSelectionList"></div>
+    </div>
+  </div>
+  
   <script type="module" src="main.js"></script>
 </body>
 </html>
