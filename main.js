@@ -20,16 +20,82 @@ import {
   setPlayerStateChangeCallback
 } from './youtube.js';
 
-// グローバル状態
-let currentPlayingIdx = null;
-let editingIndex = -1;
-let selectedRating = 1;
-let shuffleOn = false;
-let editingTitleOriginal = "";
-let pendingSeekSec = null;
-let pendingEndSec = null;
+// 定数定義
+const CONFIG = {
+  VIDEO_ID_LENGTH: 11,
+  MAX_RATING: 6,
+  END_TIMER_OFFSET: 1,
+  NEXT_SONG_DELAY: 300,
+  BASE_WINDOW_HEIGHT: 380,
+  ROW_HEIGHT: 32,
+  MAX_WINDOW_HEIGHT: 1080,
+  DOWNLOAD_DELAY: 500
+};
+
+// グローバル状態管理
+const appState = {
+  currentPlayingIdx: null,
+  editingIndex: -1,
+  selectedRating: 1,
+  shuffleOn: false,
+  editingTitleOriginal: "",
+  pendingSeekSec: null,
+  pendingEndSec: null,
+  endTimerRAF: null
+};
+
+// DOM要素キャッシュ
+const domElements = {
+  songForm: null,
+  songTitle: null,
+  songVideoId: null,
+  songArticle: null,
+  startTime: null,
+  endTime: null,
+  btnAddSong: null,
+  btnPlayPause: null,
+  btnResetForm: null,
+  btnEditStart: null,
+  btnEditEnd: null,
+  btnGetCurrent: null,
+  ratingStars: null,
+  shuffleBtn: null,
+  videoForm: null,
+  ytUrl: null,
+  playlist: null,
+  csvTextOutput: null,
+  csvFileInput: null
+};
+
+/**
+ * DOM要素をキャッシュする
+ */
+function cacheDOMElements() {
+  domElements.songForm = document.getElementById('songForm');
+  domElements.songTitle = document.getElementById('songTitle');
+  domElements.songVideoId = document.getElementById('songVideoId');
+  domElements.songArticle = document.getElementById('songArticle');
+  domElements.startTime = document.getElementById('startTime');
+  domElements.endTime = document.getElementById('endTime');
+  domElements.btnAddSong = document.getElementById('btnAddSong');
+  domElements.btnPlayPause = document.getElementById('btnPlayPause');
+  domElements.btnResetForm = document.getElementById('btnResetForm');
+  domElements.btnEditStart = document.getElementById('btnEditStart');
+  domElements.btnEditEnd = document.getElementById('btnEditEnd');
+  domElements.btnGetCurrent = document.getElementById('btnGetCurrent');
+  domElements.ratingStars = document.getElementById('ratingStars');
+  domElements.shuffleBtn = document.getElementById('shuffleBtn');
+  domElements.videoForm = document.getElementById('videoForm');
+  domElements.ytUrl = document.getElementById('ytUrl');
+  domElements.playlist = document.getElementById('playlist');
+  domElements.csvTextOutput = document.getElementById('csvTextOutput');
+  domElements.csvFileInput = document.getElementById('csvFileInput');
+}
 
 // ---- キャッシュ管理＋デフォルトCSV読み込み ----
+/**
+ * プレイリストをlocalStorageに保存する
+ */
 function savePlaylistToCache() {
   try {
     localStorage.setItem('playlist', playlistToCSV());
@@ -38,6 +104,9 @@ function savePlaylistToCache() {
   }
 }
 
+/**
+ * プレイリストをlocalStorageまたはデフォルトCSVから読み込む
+ */
 async function loadPlaylistFromCacheOrDefault() {
   const saved = localStorage.getItem('playlist');
   if (saved) {
@@ -56,110 +125,181 @@ async function loadPlaylistFromCacheOrDefault() {
   }
 }
 
-// YouTube動画長取得（必要に応じて）
+/**
+ * YouTube動画の長さを取得する
+ * @returns {Promise<number>} 動画の長さ（秒）
+ */
 async function getYouTubeDuration() {
-  if (window.ytPlayer && ytPlayer.getDuration) {
-    return ytPlayer.getDuration();
+  try {
+    if (window.ytPlayer && ytPlayer.getDuration) {
+      return ytPlayer.getDuration();
+    }
+    return 0;
+  } catch (error) {
+    console.error('Failed to get YouTube duration:', error);
+    return 0;
   }
-  return 0;
 }
 
-// ★ フォームイベント再バインド
-function initFormEventListeners(form) {
-  form.onsubmit = (e) => {
-    hideTimeEditPopup();
-    e.preventDefault();
-
-    let videoId = form.querySelector('#songVideoId').value.trim();
-    if (!videoId && window.ytPlayer && ytPlayer.getVideoData) {
-      videoId = ytPlayer.getVideoData().video_id || "";
-      form.querySelector('#songVideoId').value = videoId;
+/**
+ * YouTube動画の長さを取得する
+ * @returns {Promise<number>} 動画の長さ（秒）
+ */
+async function getYouTubeDuration() {
+  try {
+    if (window.ytPlayer && ytPlayer.getDuration) {
+      return ytPlayer.getDuration();
     }
+    return 0;
+  } catch (error) {
+    console.error('Failed to get YouTube duration:', error);
+    return 0;
+  }
+}
 
-    const title = form.querySelector('#songTitle').value.trim();
-    const startStr = form.querySelector('#startTime').value.trim();
-    const endStr = form.querySelector('#endTime').value.trim();
-    const start = parseInputTime(startStr);
-    const end = parseInputTime(endStr);
-    const article = form.querySelector('#songArticle').value.trim();
-    const rating = selectedRating;
+/**
+ * フォームデータを検証する
+ * @param {Object} formData - 検証するフォームデータ
+ * @returns {string[]} エラーメッセージの配列
+ */
+function validateSongForm(formData) {
+  const errors = [];
+  
+  if (!formData.title) {
+    errors.push("曲名/シーン名を入力してください。");
+  }
+  if (!formData.videoId || formData.videoId.length !== CONFIG.VIDEO_ID_LENGTH) {
+    errors.push("動画IDを正しく入力してください。");
+  }
+  if (isNaN(formData.start) || isNaN(formData.end) || formData.end < formData.start) {
+    errors.push("開始・終了時間を正しく指定してください。");
+  }
+  
+  return errors;
+}
 
-    if (!title) {
-      alert("曲名/シーン名を入力してください。");
-      return;
-    }
-    if (!videoId || videoId.length !== 11) {
-      alert("動画IDを正しく入力してください。");
-      return;
-    }
-    if (isNaN(start) || isNaN(end) || end < start) {
-      alert("開始・終了時間を正しく指定してください。");
-      return;
-    }
+/**
+ * フォーム送信を処理する
+ * @param {HTMLFormElement} form - 送信されたフォーム
+ * @param {Event} e - イベントオブジェクト
+ */
+function handleFormSubmit(form, e) {
+  hideTimeEditPopup();
+  e.preventDefault();
 
-    const song = { videoId, title, start, end, rating, article };
+  let videoId = form.querySelector('#songVideoId').value.trim();
+  if (!videoId && window.ytPlayer && ytPlayer.getVideoData) {
+    videoId = ytPlayer.getVideoData().video_id || "";
+    form.querySelector('#songVideoId').value = videoId;
+  }
 
-    if (editingIndex >= 0) {
-      const curTitle = form.querySelector('#songTitle').value.trim();
-      if (curTitle !== editingTitleOriginal) {
-        // タイトル変更による「新規追加」モード
-        playlistData.push(song);
-        editingIndex = -1;
-        editingTitleOriginal = "";
-        document.getElementById('btnAddSong').textContent = "リストに追加";
-      } else {
-        // 単に編集しただけ
-        playlistData[editingIndex] = song;
-        editingIndex = -1;
-        editingTitleOriginal = "";
-        document.getElementById('btnAddSong').textContent = "リストに追加";
-      }
-    } else {
+  const title = form.querySelector('#songTitle').value.trim();
+  const startStr = form.querySelector('#startTime').value.trim();
+  const endStr = form.querySelector('#endTime').value.trim();
+  const start = parseInputTime(startStr);
+  const end = parseInputTime(endStr);
+  const article = form.querySelector('#songArticle').value.trim();
+  const rating = appState.selectedRating;
+
+  const formData = { videoId, title, start, end };
+  const errors = validateSongForm(formData);
+  
+  if (errors.length > 0) {
+    alert(errors.join('\n'));
+    return;
+  }
+
+  const song = { videoId, title, start, end, rating, article };
+
+  if (appState.editingIndex >= 0) {
+    const curTitle = form.querySelector('#songTitle').value.trim();
+    if (curTitle !== appState.editingTitleOriginal) {
+      // タイトル変更による「新規追加」モード
       playlistData.push(song);
+      appState.editingIndex = -1;
+      appState.editingTitleOriginal = "";
+      domElements.btnAddSong.textContent = "リストに追加";
+    } else {
+      // 単に編集しただけ
+      playlistData[appState.editingIndex] = song;
+      appState.editingIndex = -1;
+      appState.editingTitleOriginal = "";
+      domElements.btnAddSong.textContent = "リストに追加";
     }
+  } else {
+    playlistData.push(song);
+  }
 
-    renderCurrentPlaylist();
-    resetForm();
-  };
+  renderCurrentPlaylist();
+  savePlaylistToCache();
+  resetForm();
+}
 
-  form.querySelector('#btnResetForm').onclick = (e) => {
-    hideTimeEditPopup();
-    e.preventDefault();
-    resetForm();
-  };
+/**
+ * フォームリセットボタンを処理する
+ * @param {Event} e - イベントオブジェクト
+ */
+function handleFormReset(e) {
+  hideTimeEditPopup();
+  e.preventDefault();
+  resetForm();
+}
 
-  form.querySelector('#btnEditStart').onclick = () => {
-    showTimeEditPopup({
-      fieldId: 'startTime',
-      value: form.querySelector('#startTime').value,
-      onOk: (val) => form.querySelector('#startTime').value = val,
-      onCancel: () => {}
-    });
-  };
+/**
+ * 開始時間編集ボタンを処理する
+ * @param {HTMLFormElement} form - フォーム要素
+ */
+function handleEditStartTime(form) {
+  showTimeEditPopup({
+    fieldId: 'startTime',
+    value: form.querySelector('#startTime').value,
+    onOk: (val) => form.querySelector('#startTime').value = val,
+    onCancel: () => {}
+  });
+}
 
-  form.querySelector('#btnEditEnd').onclick = () => {
-    showTimeEditPopup({
-      fieldId: 'endTime',
-      value: form.querySelector('#endTime').value,
-      onOk: (val) => form.querySelector('#endTime').value = val,
-      onCancel: () => {}
-    });
-  };
+/**
+ * 終了時間編集ボタンを処理する
+ * @param {HTMLFormElement} form - フォーム要素
+ */
+function handleEditEndTime(form) {
+  showTimeEditPopup({
+    fieldId: 'endTime',
+    value: form.querySelector('#endTime').value,
+    onOk: (val) => form.querySelector('#endTime').value = val,
+    onCancel: () => {}
+  });
+}
 
-  form.querySelector('#btnGetCurrent').onclick = () => {
-    hideTimeEditPopup();
-    form.querySelector('#startTime').value = formatTime(getCurrentTime());
-  };
+/**
+ * 現在時刻取得ボタンを処理する
+ * @param {HTMLFormElement} form - フォーム要素
+ */
+function handleGetCurrentTime(form) {
+  hideTimeEditPopup();
+  form.querySelector('#startTime').value = formatTime(getCurrentTime());
+}
+
+/**
+ * フォームイベントリスナーを初期化する
+ * @param {HTMLFormElement} form - フォーム要素
+ */
+function initFormEventListeners(form) {
+  form.onsubmit = (e) => handleFormSubmit(form, e);
+  form.querySelector('#btnResetForm').onclick = (e) => handleFormReset(e);
+  form.querySelector('#btnEditStart').onclick = () => handleEditStartTime(form);
+  form.querySelector('#btnEditEnd').onclick = () => handleEditEndTime(form);
+  form.querySelector('#btnGetCurrent').onclick = () => handleGetCurrentTime(form);
 }
 
 // ★タイトル変更時に「新規追加」へ切り替え
 function monitorTitleForEdit(form) {
   const titleInput = form.querySelector('#songTitle');
   titleInput.oninput = () => {
-    if (editingIndex >= 0 && titleInput.value.trim() !== editingTitleOriginal) {
-      document.getElementById('btnAddSong').textContent = "リストに追加";
-    } else if (editingIndex >= 0) {
-      document.getElementById('btnAddSong').textContent = "更新";
+    if (appState.editingIndex >= 0 && titleInput.value.trim() !== appState.editingTitleOriginal) {
+      domElements.btnAddSong.textContent = "リストに追加";
+    } else if (appState.editingIndex >= 0) {
+      domElements.btnAddSong.textContent = "更新";
     }
   };
 }
@@ -168,7 +308,7 @@ function monitorTitleForEdit(form) {
 function renderCurrentPlaylist() {
   renderPlaylist({
     ulId: "playlist",
-    currentPlayingIdx,
+    currentPlayingIdx: appState.currentPlayingIdx,
     onPlay: playSongSection,
     onEdit: editSong,
     onDelete: deleteSong
@@ -177,24 +317,30 @@ function renderCurrentPlaylist() {
 }
 window.renderCurrentPlaylist = renderCurrentPlaylist;
 
-// 曲を再生
+/**
+ * 指定されたインデックスの曲を再生する
+ * @param {number} idx - プレイリスト内のインデックス
+ */
 function playSongSection(idx) {
   hideTimeEditPopup();
   cancelEndTimer();
   const song = playlistData[idx];
   if (!song) return;
-  currentPlayingIdx = idx;
-  pendingSeekSec = song.start;
+  appState.currentPlayingIdx = idx;
+  appState.pendingSeekSec = song.start;
   if (song.end > song.start) {
-    pendingEndSec = song.end;
+    appState.pendingEndSec = song.end;
   } else {
-    pendingEndSec = null;
+    appState.pendingEndSec = null;
   }
   setVideo({ videoId: song.videoId, seekSec: 0, endSec: null, autoPlay: true });
   renderCurrentPlaylist();
 }
 
-// 編集ボタン：曲情報をフォームへ読み込み
+/**
+ * 編集ボタン：曲情報をフォームへ読み込み
+ * @param {number} idx - 編集する曲のインデックス
+ */
 function editSong(idx) {
   hideTimeEditPopup();
   cancelEndTimer();
@@ -206,101 +352,144 @@ function editSong(idx) {
   form.querySelector('#endTime').value = formatTime(song.end);
   form.querySelector('#songArticle').value = song.article || "";
   setRating(song.rating);
-  editingIndex = idx;
-  editingTitleOriginal = song.title;
-  document.getElementById('btnAddSong').textContent = "更新";
+  appState.editingIndex = idx;
+  appState.editingTitleOriginal = song.title;
+  domElements.btnAddSong.textContent = "更新";
   monitorTitleForEdit(form);
 }
 
-// 削除ボタン：曲をリストから消去
+/**
+ * 削除ボタン：曲をリストから消去
+ * @param {number} idx - 削除する曲のインデックス
+ */
 function deleteSong(idx) {
   hideTimeEditPopup();
   if (confirm("この曲を削除しますか？")) {
     playlistData.splice(idx, 1);
     renderCurrentPlaylist();
+    savePlaylistToCache();
     resetForm();
-    if (currentPlayingIdx === idx) {
-      currentPlayingIdx = null;
-    } else if (currentPlayingIdx > idx) {
-      currentPlayingIdx -= 1;
+    if (appState.currentPlayingIdx === idx) {
+      appState.currentPlayingIdx = null;
+    } else if (appState.currentPlayingIdx > idx) {
+      appState.currentPlayingIdx -= 1;
     }
   }
 }
 
 // 区間再生タイマー管理
-let endTimerRAF = null;
+/**
+ * 終了タイマーを設定する
+ * @param {number} endSec - 終了時刻（秒）
+ */
 function setEndTimer(endSec) {
   cancelEndTimer();
   function check() {
     const cur = getCurrentTime();
-    if (cur >= endSec - 1) {
+    if (cur >= endSec - CONFIG.END_TIMER_OFFSET) {
       pauseVideo();
       cancelEndTimer();
-      setTimeout(() => playNextSong(), 300);
+      setTimeout(() => playNextSong(), CONFIG.NEXT_SONG_DELAY);
       return;
     }
-    endTimerRAF = requestAnimationFrame(check);
+    appState.endTimerRAF = requestAnimationFrame(check);
   }
-  endTimerRAF = requestAnimationFrame(check);
+  appState.endTimerRAF = requestAnimationFrame(check);
 }
+
+/**
+ * 終了タイマーをキャンセルする
+ */
 function cancelEndTimer() {
-  if (endTimerRAF) {
-    cancelAnimationFrame(endTimerRAF);
-    endTimerRAF = null;
+  if (appState.endTimerRAF) {
+    cancelAnimationFrame(appState.endTimerRAF);
+    appState.endTimerRAF = null;
   }
 }
 
 // プレイリスト自動再生：次/前の曲
+/**
+ * ランダムなインデックスを取得する（シャッフル用）
+ * @param {number|null} excludeIdx - 除外するインデックス
+ * @returns {number|null} ランダムなインデックス
+ */
+function getRandomIndex(excludeIdx = null) {
+  if (playlistData.length === 0) return null;
+  if (playlistData.length === 1) return 0;
+  
+  let idx;
+  do {
+    idx = Math.floor(Math.random() * playlistData.length);
+  } while (idx === excludeIdx);
+  
+  return idx;
+}
+
+/**
+ * 次の曲を再生する
+ */
 function playNextSong() {
   hideTimeEditPopup();
   if (!playlistData.length) return;
   let nextIdx;
-  if (shuffleOn) {
-    do {
-      nextIdx = Math.floor(Math.random() * playlistData.length);
-    } while (playlistData.length > 1 && nextIdx === currentPlayingIdx);
+  if (appState.shuffleOn) {
+    nextIdx = getRandomIndex(appState.currentPlayingIdx);
   } else {
-    nextIdx = (currentPlayingIdx === null) ? 0 :
-              (currentPlayingIdx + 1) % playlistData.length;
+    nextIdx = (appState.currentPlayingIdx === null) ? 0 :
+              (appState.currentPlayingIdx + 1) % playlistData.length;
   }
   playSongSection(nextIdx);
 }
 
+/**
+ * 前の曲を再生する
+ */
 function playPrevSong() {
   hideTimeEditPopup();
   if (!playlistData.length) return;
   let prevIdx;
-  if (shuffleOn) {
-    do {
-      prevIdx = Math.floor(Math.random() * playlistData.length);
-    } while (playlistData.length > 1 && prevIdx === currentPlayingIdx);
+  if (appState.shuffleOn) {
+    prevIdx = getRandomIndex(appState.currentPlayingIdx);
   } else {
-    prevIdx = (currentPlayingIdx === null || currentPlayingIdx === 0) ?
+    prevIdx = (appState.currentPlayingIdx === null || appState.currentPlayingIdx === 0) ?
               playlistData.length - 1 :
-              currentPlayingIdx - 1;
+              appState.currentPlayingIdx - 1;
   }
   playSongSection(prevIdx);
 }
 
 // 評価スター
+/**
+ * 評価スターを構築する
+ */
 function buildRatingStars() {
-  const cont = document.getElementById('ratingStars');
+  const cont = domElements.ratingStars;
   cont.innerHTML = '';
-  for (let i = 1; i <= 6; ++i) {
+  for (let i = 1; i <= CONFIG.MAX_RATING; ++i) {
     const span = document.createElement('span');
     span.className = 'star s' + i;
-    span.innerHTML = i <= selectedRating ? "★" : "☆";
+    span.innerHTML = i <= appState.selectedRating ? "★" : "☆";
     span.style.cursor = 'pointer';
     span.onclick = () => setRating(i);
     cont.appendChild(span);
   }
 }
+
+/**
+ * 評価を設定する
+ * @param {number} val - 評価値（1-6）
+ */
 function setRating(val) {
-  selectedRating = val;
+  appState.selectedRating = val;
   buildRatingStars();
 }
 
 // YouTube URL/ID抽出
+/**
+ * YouTube URLまたはIDから動画IDを抽出する
+ * @param {string} input - YouTube URLまたはID
+ * @returns {string|null} 動画ID（11文字）またはnull
+ */
 function extractYouTubeId(input) {
   const urlPattern = /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([\w\-]{11})/;
   const idPattern = /^[\w\-]{11}$/;
@@ -312,6 +501,11 @@ function extractYouTubeId(input) {
 }
 
 // 時間文字列を秒に変換
+/**
+ * 時間文字列を秒に変換する
+ * @param {string|number} str - 時間文字列または数値
+ * @returns {number} 秒数
+ */
 function parseInputTime(str) {
   if (!str) return 0;
   if (typeof str === "number") return Math.floor(str);
@@ -331,6 +525,11 @@ function parseInputTime(str) {
 }
 
 // 秒を「h:mm:ss」または「m:ss」にフォーマット
+/**
+ * 秒数を時間文字列にフォーマットする
+ * @param {number} sec - 秒数
+ * @returns {string} フォーマットされた時間文字列
+ */
 function formatTime(sec) {
   sec = Math.floor(sec);
   const h = Math.floor(sec / 3600);
@@ -347,53 +546,52 @@ function adjustWindowHeightByPlaylist() {
   try {
     const { remote } = window.require('electron');
     const win = remote.getCurrentWindow();
-    const baseHeight = 380;
-    const rowHeight = 32;
     const n = playlistData.length;
     win.setSize(
       win.getSize()[0],
-      Math.min(1080, baseHeight + rowHeight * n)
+      Math.min(CONFIG.MAX_WINDOW_HEIGHT, CONFIG.BASE_WINDOW_HEIGHT + CONFIG.ROW_HEIGHT * n)
     );
   } catch (e) {
-    // 無視
+    console.error('Failed to adjust window height:', e);
   }
 }
 
 // ★ UI/イベント初期化
 window.addEventListener('DOMContentLoaded', async () => {
+  cacheDOMElements();
   buildRatingStars();
   await loadPlaylistFromCacheOrDefault();
   renderCurrentPlaylist();
   loadYouTubeAPI();
 
   // まずフォームのイベントをバインド
-  initFormEventListeners(document.getElementById('songForm'));
+  initFormEventListeners(domElements.songForm);
+  monitorTitleForEdit(domElements.songForm);
 
   // YouTubeプレイヤーの状態変化を監視
   setPlayerStateChangeCallback((event) => {
-    const btn = document.getElementById('btnPlayPause');
     if (event.data === YT.PlayerState.PLAYING) {
-      btn.textContent = "⏸";
-      if (pendingSeekSec !== null) {
-        seekTo(pendingSeekSec);
-        pendingSeekSec = null;
+      domElements.btnPlayPause.textContent = "⏸";
+      if (appState.pendingSeekSec !== null) {
+        seekTo(appState.pendingSeekSec);
+        appState.pendingSeekSec = null;
       }
-      if (pendingEndSec !== null) {
-        setEndTimer(pendingEndSec);
-        pendingEndSec = null;
+      if (appState.pendingEndSec !== null) {
+        setEndTimer(appState.pendingEndSec);
+        appState.pendingEndSec = null;
       }
     } else {
-      btn.textContent = "▶";
+      domElements.btnPlayPause.textContent = "▶";
     }
     if (event.data === YT.PlayerState.ENDED) {
-      setTimeout(() => playNextSong(), 300);
+      setTimeout(() => playNextSong(), CONFIG.NEXT_SONG_DELAY);
     }
   });
 
   document.getElementById('shuffleBtn').onclick = function () {
-    shuffleOn = !shuffleOn;
-    this.classList.toggle('active', shuffleOn);
-    this.title = shuffleOn ? "シャッフル再生中" : "シャッフル再生";
+    appState.shuffleOn = !appState.shuffleOn;
+    this.classList.toggle('active', appState.shuffleOn);
+    this.title = appState.shuffleOn ? "シャッフル再生中" : "シャッフル再生";
   };
 
   document.getElementById('videoForm').onsubmit = async (e) => {
@@ -418,7 +616,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('btnPlayPause').onclick = () => {
     hideTimeEditPopup();
-    if (currentPlayingIdx === null) {
+    if (appState.currentPlayingIdx === null) {
       playSongSection(0);
     } else {
       const state = getPlayerState();
@@ -434,9 +632,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     hideTimeEditPopup();
     cancelEndTimer();
     stopVideo();
-    currentPlayingIdx = null;
+    appState.currentPlayingIdx = null;
     renderCurrentPlaylist();
-    document.getElementById('btnPlayPause').textContent = "▶";
+    domElements.btnPlayPause.textContent = "▶";
   };
 
   document.getElementById('btnNext').onclick = playNextSong;
@@ -470,7 +668,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       setTimeout(() => {
         URL.revokeObjectURL(url);
         document.body.removeChild(a);
-      }, 500);
+      }, CONFIG.DOWNLOAD_DELAY);
     }
   };
 
@@ -490,6 +688,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         if (!arr.length) throw new Error("CSV形式が正しくありません。");
         setPlaylistData(arr);
         renderCurrentPlaylist();
+        savePlaylistToCache();
         resetForm();
         // フォーム再生成で入力不可バグ回避
         hardRefreshSongForm();
@@ -508,7 +707,7 @@ function resetForm() {
   const form = document.getElementById('songForm');
   form.reset();
   setRating(1);
-  editingIndex = -1;
+  appState.editingIndex = -1;
   document.getElementById('btnAddSong').textContent = "リストに追加";
   // 全 input/textarea を編集可能に戻す
   form.querySelectorAll('input, textarea').forEach(inp => {
