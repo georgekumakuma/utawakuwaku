@@ -180,7 +180,6 @@ window.renderCurrentPlaylist = renderCurrentPlaylist;
 // 曲を再生
 function playSongSection(idx) {
   hideTimeEditPopup();
-  cancelEndTimer();
   const song = playlistData[idx];
   if (!song) return;
   currentPlayingIdx = idx;
