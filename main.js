@@ -294,24 +294,51 @@ function deleteSong(idx) {
 
 // 区間再生タイマー管理
 let endTimerRAF = null;
+let endTimerInterval = null;
 function setEndTimer(endSec) {
   cancelEndTimer();
-  function check() {
+  let hasTriggered = false;
+  
+  function triggerEnd() {
+    if (hasTriggered) return;
+    hasTriggered = true;
+    pauseVideo();
+    cancelEndTimer();
+    setTimeout(() => playNextSong(), 300);
+  }
+  
+  // requestAnimationFrameによる高頻度チェック
+  function checkRAF() {
+    if (hasTriggered) return;
     const cur = getCurrentTime();
-    if (cur >= endSec - 1) {
-      pauseVideo();
-      cancelEndTimer();
-      setTimeout(() => playNextSong(), 300);
+    // 終了時刻の0.3秒前に到達したら停止
+    if (cur >= endSec - 0.3) {
+      triggerEnd();
       return;
     }
-    endTimerRAF = requestAnimationFrame(check);
+    endTimerRAF = requestAnimationFrame(checkRAF);
   }
-  endTimerRAF = requestAnimationFrame(check);
+  
+  // setIntervalによるバックアップチェック（200msごと）
+  endTimerInterval = setInterval(() => {
+    if (hasTriggered) return;
+    const cur = getCurrentTime();
+    // 終了時刻の0.2秒前、または超過した場合に停止
+    if (cur >= endSec - 0.2 || cur >= endSec) {
+      triggerEnd();
+    }
+  }, 200);
+  
+  endTimerRAF = requestAnimationFrame(checkRAF);
 }
 function cancelEndTimer() {
   if (endTimerRAF) {
     cancelAnimationFrame(endTimerRAF);
     endTimerRAF = null;
+  }
+  if (endTimerInterval) {
+    clearInterval(endTimerInterval);
+    endTimerInterval = null;
   }
 }
 
