@@ -5,8 +5,77 @@ export const CSV_HEADER = "videoId,title,start,end,rating,article";
 
 export let playlistData = [];
 
+// プレイリストの初期化（ローカルストレージから読み込み、なければデフォルトCSVから読み込み）
+export async function initializePlaylist() {
+  try {
+    const saved = localStorage.getItem('utawakuwaku_playlist');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        playlistData = parsed;
+        return true; // 既存データを読み込み
+      }
+    }
+  } catch (e) {
+    console.warn('ローカルストレージからの読み込みに失敗:', e);
+  }
+  
+  // デフォルトCSVファイルから読み込み
+  try {
+    const response = await fetch('./playlists/utawakuwaku_playlist_default.csv');
+    if (response.ok) {
+      const csvText = await response.text();
+      const defaultPlaylist = csvToPlaylist(csvText);
+      if (defaultPlaylist.length > 0) {
+        playlistData = defaultPlaylist;
+        savePlaylistToStorage(); // デフォルトを保存
+        return false; // デフォルトデータを使用
+      }
+    }
+  } catch (e) {
+    console.warn('デフォルトCSVファイルの読み込みに失敗:', e);
+  }
+  
+  // 最後の手段として空のプレイリスト
+  playlistData = [];
+  return false;
+}
+
+// プレイリストをローカルストレージに保存
+export function savePlaylistToStorage() {
+  try {
+    localStorage.setItem('utawakuwaku_playlist', JSON.stringify(playlistData));
+  } catch (e) {
+    console.warn('ローカルストレージへの保存に失敗:', e);
+  }
+}
+
 export function setPlaylistData(arr) {
   playlistData = arr;
+  savePlaylistToStorage(); // 自動保存
+}
+
+// デフォルトプレイリストに戻す
+export async function resetToDefaultPlaylist() {
+  try {
+    const response = await fetch('./playlists/utawakuwaku_playlist_default.csv');
+    if (response.ok) {
+      const csvText = await response.text();
+      const defaultPlaylist = csvToPlaylist(csvText);
+      if (defaultPlaylist.length > 0) {
+        playlistData = defaultPlaylist;
+        savePlaylistToStorage();
+        return playlistData.length;
+      }
+    }
+  } catch (e) {
+    console.warn('デフォルトCSVファイルの読み込みに失敗:', e);
+  }
+  
+  // CSVファイルの読み込みに失敗した場合は空にする
+  playlistData = [];
+  savePlaylistToStorage();
+  return 0;
 }
 
 export function playlistToCSV(arr = playlistData) {
@@ -49,70 +118,110 @@ export function csvToPlaylist(text) {
   });
 }
 
-// プレイリストをHTMLで描画
+// プレイリストをHTMLで描画（改良版：現代的UI + 編集状態表示）
 export function renderPlaylist({ 
   ulId = "playlist", 
   currentPlayingIdx = null, 
+  editingIdx = null,
   onPlay, 
   onEdit, 
   onDelete 
 }) {
   const ul = document.getElementById(ulId);
   ul.innerHTML = '';
+  
+  if (playlistData.length === 0) {
+    ul.innerHTML = `
+      <div style="text-align: center; padding: 30px; color: var(--text-muted);">
+        <div style="font-size: 48px; margin-bottom: 12px;">🎵</div>
+        <p>プレイリストが空です</p>
+        <p style="font-size: 12px;">上記のフォームから曲を追加してください</p>
+      </div>
+    `;
+    return;
+  }
+
   playlistData.forEach((song, idx) => {
     const li = document.createElement('li');
-    li.className = 'playlist-item' + (idx === currentPlayingIdx ? ' playing' : '');
+    let className = 'playlist-item';
+    if (idx === currentPlayingIdx) className += ' playing';
+    if (idx === editingIdx) className += ' editing';
+    
+    li.className = className;
     li.tabIndex = 0;
     li.draggable = true;
     li.setAttribute("data-idx", idx);
 
-    // ★「▶ボタン」削除、編集ボタンは大きいアイコン
     li.innerHTML = `
-      <span class="meta-title" title="${song.title}">${song.title}</span>
-      <span class="meta-article" title="${song.article||''}">${song.article||''}</span>
-      <span class="meta-video">${song.videoId}</span>
-      <span class="meta-range">${formatTime(song.start)}～${formatTime(song.end)}</span>
-      <span class="meta-rating">${ratingIcons(song.rating)}</span>
-      <span class="playlist-controls">
-        <button title="編集" class="edit-btn">&#9998;</button>
-        <button title="削除">&#10006;</button>
-      </span>
+      <div class="playlist-number">${(idx + 1).toString().padStart(2, '0')}</div>
+      <div class="playlist-content">
+        <div class="meta-title" title="${escapeHtml(song.title)}">${escapeHtml(song.title)}</div>
+        <div class="meta-article" title="${escapeHtml(song.article||'')}">${escapeHtml(song.article||'')}</div>
+        <div class="meta-video">${song.videoId}</div>
+        <div class="meta-range">${formatTime(song.start)}～${formatTime(song.end)}</div>
+        <div class="meta-rating">${ratingIcons(song.rating)}</div>
+      </div>
+      <div class="playlist-controls">
+        <button class="btn btn-secondary btn-icon edit-btn" title="編集">✏️</button>
+        <button class="btn btn-secondary btn-icon delete-btn" title="削除">🗑️</button>
+      </div>
+      ${idx === currentPlayingIdx ? '<div class="now-playing-indicator">PLAYING</div>' : ''}
+      ${idx === editingIdx ? '<div class="editing-indicator">EDITING</div>' : ''}
     `;
 
-    // 編集ボタン大きく
-    const editBtn = li.querySelector('button[title="編集"]');
-    editBtn.style.fontSize = "1.45em"; // 標準1em→1.45emに拡大
-    editBtn.style.padding = "0 8px";
-
     // 各操作イベント
-    // 再生はli全体クリック
-    li.onclick = () => { onPlay && onPlay(idx); };
-    editBtn.onclick = (e) => { e.stopPropagation(); onEdit && onEdit(idx); };
-    li.querySelector('button[title="削除"]').onclick = (e) => { e.stopPropagation(); onDelete && onDelete(idx); };
+    const editBtn = li.querySelector('.edit-btn');
+    const deleteBtn = li.querySelector('.delete-btn');
+    
+    // プレイリスト項目クリックで再生
+    li.addEventListener('click', (e) => {
+      if (!e.target.closest('.playlist-controls')) {
+        onPlay && onPlay(idx);
+      }
+    });
+    
+    editBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onEdit && onEdit(idx);
+    });
+    
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onDelete && onDelete(idx);
+    });
+    
     ul.appendChild(li);
   });
 
-  // --- ドラッグ&ドロップ機能はそのまま ---
+  // ドラッグ&ドロップ機能
+  setupDragAndDrop(ul);
+}
+
+function setupDragAndDrop(ul) {
   let draggedIdx = null;
-  ul.ondragstart = function(e) {
+  
+  ul.addEventListener('dragstart', function(e) {
     const li = e.target.closest('.playlist-item');
     if (!li) return;
     draggedIdx = parseInt(li.getAttribute('data-idx'));
     li.classList.add('dragging');
     e.dataTransfer.effectAllowed = "move";
-  };
-  ul.ondragover = function(e) {
+  });
+  
+  ul.addEventListener('dragover', function(e) {
     e.preventDefault();
     const li = e.target.closest('.playlist-item');
     if (!li) return;
-    li.style.borderTop = "2.5px solid #67d1fa";
-  };
-  ul.ondragleave = function(e) {
+    li.style.borderTop = "3px solid var(--accent-primary)";
+  });
+  
+  ul.addEventListener('dragleave', function(e) {
     const li = e.target.closest('.playlist-item');
     if (!li) return;
     li.style.borderTop = "";
-  };
-  ul.ondrop = function(e) {
+  });
+  
+  ul.addEventListener('drop', function(e) {
     e.preventDefault();
     const li = e.target.closest('.playlist-item');
     if (!li || draggedIdx === null) return;
@@ -120,18 +229,22 @@ export function renderPlaylist({
     if (dropIdx !== draggedIdx) {
       const moved = playlistData.splice(draggedIdx, 1)[0];
       playlistData.splice(dropIdx, 0, moved);
+      savePlaylistToStorage(); // 自動保存
       if (typeof window.renderCurrentPlaylist === "function") {
         window.renderCurrentPlaylist();
       }
     }
     draggedIdx = null;
     document.querySelectorAll('.playlist-item').forEach(li => li.style.borderTop = "");
-  };
-  ul.ondragend = function(e) {
+  });
+  
+  ul.addEventListener('dragend', function(e) {
     draggedIdx = null;
-    document.querySelectorAll('.playlist-item').forEach(li => li.classList.remove('dragging'));
-    document.querySelectorAll('.playlist-item').forEach(li => li.style.borderTop = "");
-  };
+    document.querySelectorAll('.playlist-item').forEach(li => {
+      li.classList.remove('dragging');
+      li.style.borderTop = "";
+    });
+  });
 }
 
 function escapeCSV(val) {
@@ -140,13 +253,16 @@ function escapeCSV(val) {
     return '"' + val.replace(/"/g, '""') + '"';
   return val;
 }
+
 function unescapeCSV(val) {
   if (val.startsWith('"') && val.endsWith('"')) {
     return val.slice(1, -1).replace(/""/g, '"');
   }
   return val;
 }
+
 function toIntSec(val) { return Math.floor(parseFloat(val) || 0); }
+
 function formatTime(sec) {
   sec = Math.floor(sec);
   const h = Math.floor(sec / 3600);
@@ -154,9 +270,16 @@ function formatTime(sec) {
   const s = sec % 60;
   return h > 0 ? `${h}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}` : `${m}:${s.toString().padStart(2,'0')}`;
 }
+
 function ratingIcons(val) {
   let stars = '';
   for (let i = 1; i <= 6; ++i)
     stars += `<span class="star s${i}">${i <= val ? "★" : "☆"}</span>`;
   return stars;
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
