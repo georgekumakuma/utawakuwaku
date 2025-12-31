@@ -3,7 +3,8 @@
 import { showTimeEditPopup, hideTimeEditPopup } from './popup.js';
 import { 
   playlistData, setPlaylistData, playlistToCSV, csvToPlaylist, renderPlaylist, 
-  initializePlaylist, savePlaylistToStorage, resetToDefaultPlaylist 
+  initializePlaylist, savePlaylistToStorage, resetToDefaultPlaylist,
+  loadPlaylistBank, loadPresetPlaylist
 } from './playlist.js';
 import { 
   loadYouTubeAPI, setVideo, playVideo, pauseVideo, stopVideo, seekTo,
@@ -794,6 +795,9 @@ window.addEventListener('DOMContentLoaded', async () => {
       showToast(`デフォルトプレイリスト（${count}曲）を読み込みました`);
     }
   };
+
+  // プレイリストバンク機能
+  setupPlaylistBank();
 });
 
 // フォームリセット
@@ -820,4 +824,99 @@ function resetForm() {
   });
   
   renderCurrentPlaylist();
+}
+
+// ========== プレイリストバンク機能 ==========
+
+function setupPlaylistBank() {
+  const modal = document.getElementById('playlistBankModal');
+  const btnOpen = document.getElementById('btnPlaylistBank');
+  const btnClose = document.getElementById('btnCloseBankModal');
+  const listContainer = document.getElementById('playlistBankList');
+
+  // モーダルを開く
+  btnOpen.onclick = async () => {
+    hideTimeEditPopup();
+    await renderPlaylistBankList();
+    modal.classList.add('show');
+  };
+
+  // モーダルを閉じる
+  btnClose.onclick = () => {
+    modal.classList.remove('show');
+  };
+
+  // モーダル外クリックで閉じる
+  modal.onclick = (e) => {
+    if (e.target === modal) {
+      modal.classList.remove('show');
+    }
+  };
+
+  // ESCキーで閉じる
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal.classList.contains('show')) {
+      modal.classList.remove('show');
+    }
+  });
+}
+
+async function renderPlaylistBankList() {
+  const listContainer = document.getElementById('playlistBankList');
+  listContainer.innerHTML = '<li style="text-align: center; padding: 20px; color: var(--text-muted);">読み込み中...</li>';
+
+  try {
+    const bank = await loadPlaylistBank();
+    listContainer.innerHTML = '';
+
+    bank.presets.forEach(preset => {
+      const li = document.createElement('li');
+      li.className = 'playlist-bank-item';
+      li.innerHTML = `
+        <span class="preset-icon">${preset.icon || '📋'}</span>
+        <div class="preset-info">
+          <div class="preset-name">${escapeHtml(preset.name)}</div>
+          <div class="preset-description">${escapeHtml(preset.description || '')}</div>
+        </div>
+      `;
+      
+      li.onclick = () => selectPreset(preset.id);
+      listContainer.appendChild(li);
+    });
+
+  } catch (e) {
+    listContainer.innerHTML = `<li style="text-align: center; padding: 20px; color: var(--accent-danger);">読み込みエラー: ${e.message}</li>`;
+  }
+}
+
+async function selectPreset(presetId) {
+  const modal = document.getElementById('playlistBankModal');
+  
+  try {
+    const result = await loadPresetPlaylist(presetId);
+    
+    // 再生を停止
+    currentPlayingIdx = null;
+    cancelEndTimer();
+    stopVideo();
+    
+    // UIを更新
+    renderCurrentPlaylist();
+    resetForm();
+    document.getElementById('btnPlayPause').textContent = "▶";
+    
+    // モーダルを閉じる
+    modal.classList.remove('show');
+    
+    showToast(`「${result.preset.name}」（${result.count}曲）を読み込みました`);
+    
+  } catch (e) {
+    showToast(`読み込みエラー: ${e.message}`);
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }

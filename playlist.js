@@ -5,6 +5,67 @@ export const CSV_HEADER = "videoId,title,start,end,rating,article";
 
 export let playlistData = [];
 
+// プレイリストバンク（プリセット一覧）のキャッシュ
+let playlistBankData = null;
+
+// プレイリストバンクを読み込む
+export async function loadPlaylistBank() {
+  if (playlistBankData) return playlistBankData;
+  
+  try {
+    const response = await fetch('./playlists/playlist-bank.json');
+    if (response.ok) {
+      playlistBankData = await response.json();
+      return playlistBankData;
+    }
+  } catch (e) {
+    console.warn('プレイリストバンクの読み込みに失敗:', e);
+  }
+  
+  // フォールバック: デフォルトプリセットのみ
+  playlistBankData = {
+    version: "1.0",
+    presets: [{
+      id: "default",
+      name: "デフォルト",
+      description: "おすすめの曲を集めたプレイリスト",
+      file: "utawakuwaku_playlist_default.csv",
+      icon: "⭐"
+    }]
+  };
+  return playlistBankData;
+}
+
+// 指定したプリセットを読み込む
+export async function loadPresetPlaylist(presetId) {
+  const bank = await loadPlaylistBank();
+  const preset = bank.presets.find(p => p.id === presetId);
+  
+  if (!preset) {
+    throw new Error(`プリセット「${presetId}」が見つかりません`);
+  }
+  
+  const response = await fetch(`./playlists/${preset.file}`);
+  if (!response.ok) {
+    throw new Error(`プレイリストファイルの読み込みに失敗: ${preset.file}`);
+  }
+  
+  const csvText = await response.text();
+  const loadedPlaylist = csvToPlaylist(csvText);
+  
+  if (loadedPlaylist.length === 0) {
+    throw new Error('プレイリストが空です');
+  }
+  
+  playlistData = loadedPlaylist;
+  savePlaylistToStorage();
+  
+  return {
+    preset: preset,
+    count: loadedPlaylist.length
+  };
+}
+
 // プレイリストの初期化（ローカルストレージから読み込み、なければデフォルトCSVから読み込み）
 export async function initializePlaylist() {
   try {

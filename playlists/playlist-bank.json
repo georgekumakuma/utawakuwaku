@@ -1,0 +1,13 @@
+{
+  "version": "1.0",
+  "description": "プレイリストバンク - プリセット一覧",
+  "presets": [
+    {
+      "id": "default",
+      "name": "デフォルト",
+      "description": "おすすめの曲を集めたプレイリスト",
+      "file": "utawakuwaku_playlist_default.csv",
+      "icon": "⭐"
+    }
+  ]
+}
