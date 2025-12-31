@@ -4,8 +4,26 @@
 let ytPlayer = null;
 let ytReady = false;
 let playerReadyCallback = null;
+let playerErrorCallback = null;
 let fadeAnimationId = null;
 let currentVolume = 100;
+
+function isDebugEnabled() {
+  try {
+    return localStorage.getItem('utawakuwaku_debug') === '1';
+  } catch {
+    return false;
+  }
+}
+
+function uwkLog(type, data = {}) {
+  if (!isDebugEnabled()) return;
+  try {
+    console.log('UWK', { t: Date.now(), type, ...data });
+  } catch {
+    // ignore
+  }
+}
 
 export function loadYouTubeAPI(onReadyCallback) {
   if (window.YT && window.YT.Player) {
@@ -32,10 +50,24 @@ function onYouTubeIframeAPIReady() {
     width: '100%',
     videoId: '',
     events: {
-      'onReady': () => { ytReady = true; },
+      'onReady': () => {
+        ytReady = true;
+        // Expose for existing code paths (popup.js / main.js checks).
+        try { window.ytPlayer = ytPlayer; } catch { /* ignore */ }
+        uwkLog('ytReady');
+      },
       'onStateChange': (event) => {
         if (typeof window.onYouTubePlayerStateChange === 'function') {
           window.onYouTubePlayerStateChange(event);
+        }
+        uwkLog('ytState', { state: event.data });
+      },
+      'onError': (event) => {
+        // Surface error code for investigation.
+        const code = event?.data;
+        uwkLog('ytError', { code });
+        if (typeof playerErrorCallback === 'function') {
+          try { playerErrorCallback(code, event); } catch { /* ignore */ }
         }
       }
     },
@@ -142,5 +174,10 @@ export async function fetchYouTubeTitle(videoId) {
 // プレイヤー状態変更イベント用（windowグローバルに割当）
 export function setPlayerStateChangeCallback(fn) {
   window.onYouTubePlayerStateChange = fn;
+}
+
+// Player error callback (code, event)
+export function setPlayerErrorCallback(fn) {
+  playerErrorCallback = fn;
 }
 
