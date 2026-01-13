@@ -3,13 +3,47 @@
 import { showTimeEditPopup, hideTimeEditPopup } from './popup.js';
 import { 
   playlistData, setPlaylistData, playlistToCSV, csvToPlaylist, renderPlaylist, 
-  initializePlaylist, savePlaylistToStorage, resetToDefaultPlaylist 
+  initializePlaylist, savePlaylistToStorage, resetToDefaultPlaylist,
+  loadPlaylistBank, loadPresetPlaylist
 } from './playlist.js';
 import { 
   loadYouTubeAPI, setVideo, playVideo, pauseVideo, stopVideo, seekTo,
   getCurrentTime, getPlayerState, fetchYouTubeTitle, setPlayerStateChangeCallback,
   fadeOutAndStop, setVolume, getVolume
 } from './youtube.js';
+
+// ---- Debug logging (investigation aid; disabled by default) ----
+function isDebugEnabled() {
+  try {
+    return localStorage.getItem('utawakuwaku_debug') === '1';
+  } catch {
+    return false;
+  }
+}
+
+function uwkLog(type, data = {}) {
+  if (!isDebugEnabled()) return;
+  const payload = {
+    t: Date.now(),
+    type,
+    ...data,
+  };
+  try {
+    window.__uwkLogBuffer = window.__uwkLogBuffer || [];
+    window.__uwkLogBuffer.push(payload);
+    if (window.__uwkLogBuffer.length > 300) {
+      window.__uwkLogBuffer.splice(0, window.__uwkLogBuffer.length - 300);
+    }
+  } catch {
+    // ignore
+  }
+  // Keep it one-line for copy/paste.
+  try {
+    console.log('UWK', payload);
+  } catch {
+    // ignore
+  }
+}
 
 let currentPlayingIdx = null;
 let editingIndex = -1;
@@ -18,6 +52,9 @@ let shuffleOn = false;
 let editingTitleOriginal = ""; // ★編集前タイトル保存用
 let userSeekedManually = false; // ユーザーが手動でシークしたかを追跡
 let endTimerDisabled = false; // 終了タイマーを無効化するフラグ
+
+let playSessionId = 0; // increments on each play request
+let currentSessionId = 0; // snapshot for current track
 
 // テーマ管理
 let currentTheme = 0; // 0: 朝焼け, 1: 昼, 2: 夕焼け, 3: ミッドナイト
@@ -248,6 +285,16 @@ async function playSongSection(idx) {
   hideTimeEditPopup();
   const song = playlistData[idx];
   if (!song) return;
+
+  currentSessionId = ++playSessionId;
+  uwkLog('playSongSection', {
+    sess: currentSessionId,
+    idx,
+    videoId: song.videoId,
+    start: song.start,
+    end: song.end,
+    prevIdx: currentPlayingIdx,
+  });
   
   // 前の曲が再生中ならフェードアウト
   if (currentPlayingIdx !== null && currentPlayingIdx !== idx) {
@@ -272,6 +319,12 @@ async function playSongSection(idx) {
   
   // より正確な位置調整のため少し待ってから再度シーク
   setTimeout(async () => {
+    uwkLog('postLoadSeek', {
+      sess: currentSessionId,
+      idx,
+      cur: getCurrentTime(),
+      state: getPlayerState(),
+    });
     let videoDuration = 0;
     if (window.ytPlayer && ytPlayer.getDuration) {
       videoDuration = ytPlayer.getDuration();
@@ -279,9 +332,11 @@ async function playSongSection(idx) {
     
     // 開始位置の精密調整
     seekTo(song.start);
+    uwkLog('seekToStart', { sess: currentSessionId, idx, seek: song.start, cur: getCurrentTime() });
     
     if (!song.end || song.end <= song.start || (videoDuration > 0 && song.end > videoDuration - 1)) {
       // 最後まで再生
+      uwkLog('endTimerSkip', { sess: currentSessionId, idx, reason: 'invalidEndOrVideoEnd', end: song.end, start: song.start, duration: videoDuration });
     } else {
       setEndTimer(song.end);
     }
@@ -366,6 +421,14 @@ let seekDetectionThreshold = 1.5; // シーク検出のしきい値（秒）
 
 function setEndTimer(endSec) {
   if (endTimerDisabled) return; // 終了タイマーが無効化されている場合はスキップ
+
+  uwkLog('endTimerSet', {
+    sess: currentSessionId,
+    idx: currentPlayingIdx,
+    end: endSec,
+    cur: getCurrentTime(),
+    state: getPlayerState(),
+  });
   
   cancelEndTimer();
   lastCheckedTime = 0;
@@ -381,6 +444,16 @@ function setEndTimer(endSec) {
       // ユーザーがシークした場合、終了タイマーを無効化
       endTimerDisabled = true;
       cancelEndTimer();
+      uwkLog('endTimerDisabled', {
+        sess: currentSessionId,
+        idx: currentPlayingIdx,
+        reason: 'seekJump',
+        cur,
+        last: lastCheckedTime,
+        delta: Math.abs(cur - lastCheckedTime),
+        threshold: seekDetectionThreshold,
+        state: getPlayerState(),
+      });
       showToast("手動シーク検出: 自動終了を無効化しました", 2000);
       return;
     }
@@ -388,10 +461,19 @@ function setEndTimer(endSec) {
     // 終了時刻に近づいたら（0.3秒前からフェードアウト開始）
     if (cur >= endSec - 0.3 && !userSeekedManually) {
       cancelEndTimer();
+
+      uwkLog('endTimerFire', {
+        sess: currentSessionId,
+        idx: currentPlayingIdx,
+        reason: 'endTimer',
+        cur,
+        end: endSec,
+        state: getPlayerState(),
+      });
       
       // フェードアウトして次の曲へ
       fadeOutAndStop(500).then(() => {
-        setTimeout(() => playNextSong(), 200);
+        setTimeout(() => playNextSong('endTimer'), 200);
       });
       return;
     }
@@ -414,6 +496,14 @@ function cancelEndTimer() {
 async function playNextSong() {
   hideTimeEditPopup();
   if (!playlistData.length) return;
+  const reason = arguments.length > 0 ? arguments[0] : 'unknown';
+  uwkLog('requestNext', {
+    sess: currentSessionId,
+    reason,
+    idx: currentPlayingIdx,
+    state: getPlayerState(),
+    cur: getCurrentTime(),
+  });
   let nextIdx;
   if (shuffleOn) {
     do { nextIdx = Math.floor(Math.random() * playlistData.length); }
@@ -427,6 +517,14 @@ async function playNextSong() {
 async function playPrevSong() {
   hideTimeEditPopup();
   if (!playlistData.length) return;
+  const reason = arguments.length > 0 ? arguments[0] : 'unknown';
+  uwkLog('requestPrev', {
+    sess: currentSessionId,
+    reason,
+    idx: currentPlayingIdx,
+    state: getPlayerState(),
+    cur: getCurrentTime(),
+  });
   let prevIdx;
   if (shuffleOn) {
     do { prevIdx = Math.floor(Math.random() * playlistData.length); }
@@ -558,10 +656,16 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   setPlayerStateChangeCallback((event) => {
     const btn = document.getElementById('btnPlayPause');
+    uwkLog('ytState', {
+      sess: currentSessionId,
+      idx: currentPlayingIdx,
+      state: event.data,
+      cur: getCurrentTime(),
+    });
     if (event.data === 1) { btn.textContent = "⏸"; }
     else { btn.textContent = "▶"; }
     if (event.data === 0) { // 0=終了
-      setTimeout(() => playNextSong(), 300);
+      setTimeout(() => playNextSong('ended'), 300);
     }
     if (currentPlayingIdx !== null && event.data === 1) {
       const song = playlistData[currentPlayingIdx];
@@ -660,6 +764,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (currentPlayingIdx === null) { playSongSection(0); }
     else {
       const state = getPlayerState();
+      uwkLog('clickPlayPause', { sess: currentSessionId, idx: currentPlayingIdx, state, cur: getCurrentTime() });
       if (state === 1) { pauseVideo(); }
       else { playVideo(); }
     }
@@ -667,13 +772,14 @@ window.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btnStop').onclick = () => {
     hideTimeEditPopup();
     cancelEndTimer();
+    uwkLog('clickStop', { sess: currentSessionId, idx: currentPlayingIdx, state: getPlayerState(), cur: getCurrentTime() });
     stopVideo();
     currentPlayingIdx = null;
     renderCurrentPlaylist();
     document.getElementById('btnPlayPause').textContent = "▶";
   };
-  document.getElementById('btnNext').onclick = playNextSong;
-  document.getElementById('btnPrev').onclick = playPrevSong;
+  document.getElementById('btnNext').onclick = () => playNextSong('userNext');
+  document.getElementById('btnPrev').onclick = () => playPrevSong('userPrev');
   
   // プレイリストリセットボタン
   document.getElementById('btnResetPlaylist').onclick = async () => {
@@ -689,6 +795,9 @@ window.addEventListener('DOMContentLoaded', async () => {
       showToast(`デフォルトプレイリスト（${count}曲）を読み込みました`);
     }
   };
+
+  // プレイリストバンク機能
+  setupPlaylistBank();
 });
 
 // フォームリセット
@@ -715,4 +824,99 @@ function resetForm() {
   });
   
   renderCurrentPlaylist();
+}
+
+// ========== プレイリストバンク機能 ==========
+
+function setupPlaylistBank() {
+  const modal = document.getElementById('playlistBankModal');
+  const btnOpen = document.getElementById('btnPlaylistBank');
+  const btnClose = document.getElementById('btnCloseBankModal');
+  const listContainer = document.getElementById('playlistBankList');
+
+  // モーダルを開く
+  btnOpen.onclick = async () => {
+    hideTimeEditPopup();
+    await renderPlaylistBankList();
+    modal.classList.add('show');
+  };
+
+  // モーダルを閉じる
+  btnClose.onclick = () => {
+    modal.classList.remove('show');
+  };
+
+  // モーダル外クリックで閉じる
+  modal.onclick = (e) => {
+    if (e.target === modal) {
+      modal.classList.remove('show');
+    }
+  };
+
+  // ESCキーで閉じる
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal.classList.contains('show')) {
+      modal.classList.remove('show');
+    }
+  });
+}
+
+async function renderPlaylistBankList() {
+  const listContainer = document.getElementById('playlistBankList');
+  listContainer.innerHTML = '<li style="text-align: center; padding: 20px; color: var(--text-muted);">読み込み中...</li>';
+
+  try {
+    const bank = await loadPlaylistBank();
+    listContainer.innerHTML = '';
+
+    bank.presets.forEach(preset => {
+      const li = document.createElement('li');
+      li.className = 'playlist-bank-item';
+      li.innerHTML = `
+        <span class="preset-icon">${preset.icon || '📋'}</span>
+        <div class="preset-info">
+          <div class="preset-name">${escapeHtml(preset.name)}</div>
+          <div class="preset-description">${escapeHtml(preset.description || '')}</div>
+        </div>
+      `;
+      
+      li.onclick = () => selectPreset(preset.id);
+      listContainer.appendChild(li);
+    });
+
+  } catch (e) {
+    listContainer.innerHTML = `<li style="text-align: center; padding: 20px; color: var(--accent-danger);">読み込みエラー: ${e.message}</li>`;
+  }
+}
+
+async function selectPreset(presetId) {
+  const modal = document.getElementById('playlistBankModal');
+  
+  try {
+    const result = await loadPresetPlaylist(presetId);
+    
+    // 再生を停止
+    currentPlayingIdx = null;
+    cancelEndTimer();
+    stopVideo();
+    
+    // UIを更新
+    renderCurrentPlaylist();
+    resetForm();
+    document.getElementById('btnPlayPause').textContent = "▶";
+    
+    // モーダルを閉じる
+    modal.classList.remove('show');
+    
+    showToast(`「${result.preset.name}」（${result.count}曲）を読み込みました`);
+    
+  } catch (e) {
+    showToast(`読み込みエラー: ${e.message}`);
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }

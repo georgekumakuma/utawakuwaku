@@ -27,7 +27,17 @@ function createWindow() {
   Menu.setApplicationMenu(null);
 
   win.loadURL(`http://localhost:${SERVER_PORT}/index.html`);
-  // win.webContents.openDevTools(); // ←開発時のみ
+
+  // DevTools: open only when explicitly enabled (keeps production UX unchanged)
+  // Enable via: UWK_DEVTOOLS=1
+  const shouldOpenDevTools =
+    process.env.UWK_DEVTOOLS === '1' ||
+    process.env.UWK_DEVTOOLS === 'true' ||
+    (!app.isPackaged && process.env.NODE_ENV !== 'production');
+
+  if (shouldOpenDevTools) {
+    win.webContents.openDevTools({ mode: 'detach' });
+  }
 }
 
 app.whenReady().then(createWindow);

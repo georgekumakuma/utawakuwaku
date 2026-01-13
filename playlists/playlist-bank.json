@@ -1,0 +1,41 @@
+{
+  "version": "1.0",
+  "description": "プレイリストバンク - プリセット一覧",
+  "presets": [
+    {
+      "id": "default",
+      "name": "デフォルト",
+      "description": "おすすめの曲を集めたプレイリスト",
+      "file": "utawakuwaku_playlist_default.csv",
+      "icon": "⭐"
+    },
+    {
+      "id": "nyahicut1",
+      "name": "にゃひカット1",
+      "description": "にゃひカットプレイリスト（シーン募集中！）",
+      "file": "utawakuwaku_playlist_nyahicut1.csv",
+      "icon": "🐱"
+    },
+    {
+      "id": "ballad",
+      "name": "Balladコレクション",
+      "description": "バラード曲を集めたプレイリスト",
+      "file": "utawaku_best_ballad.csv",
+      "icon": "🎵"
+    },
+    {
+      "id": "cute",
+      "name": "Cuteコレクション",
+      "description": "かわいい曲を集めたプレイリスト",
+      "file": "utawaku_best_cute.csv",
+      "icon": "💕"
+    },
+    {
+      "id": "pops",
+      "name": "Popsコレクション",
+      "description": "ポップス曲を集めたプレイリスト",
+      "file": "utawaku_best_pops.csv",
+      "icon": "🎤"
+    }
+  ]
+}
