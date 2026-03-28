@@ -118,18 +118,20 @@ export function csvToPlaylist(text) {
   });
 }
 
-// プレイリストをHTMLで描画（改良版：現代的UI + 編集状態表示）
-export function renderPlaylist({ 
-  ulId = "playlist", 
-  currentPlayingIdx = null, 
+// プレイリストをHTMLで描画（改良版：検索フィルター・ソート・編集状態表示対応）
+export function renderPlaylist({
+  ulId = "playlist",
+  currentPlayingIdx = null,
   editingIdx = null,
-  onPlay, 
-  onEdit, 
-  onDelete 
+  filterText = "",
+  sortOrder = "default",
+  onPlay,
+  onEdit,
+  onDelete
 }) {
   const ul = document.getElementById(ulId);
   ul.innerHTML = '';
-  
+
   if (playlistData.length === 0) {
     ul.innerHTML = `
       <div style="text-align: center; padding: 30px; color: var(--text-muted);">
@@ -141,22 +143,60 @@ export function renderPlaylist({
     return;
   }
 
-  playlistData.forEach((song, idx) => {
+  // 検索フィルター（元インデックスを保持したまま絞り込み）
+  const query = filterText.toLowerCase().trim();
+  let items = playlistData.map((song, idx) => ({ song, idx }));
+  if (query) {
+    items = items.filter(({ song }) =>
+      song.title.toLowerCase().includes(query) ||
+      (song.article || '').toLowerCase().includes(query)
+    );
+  }
+
+  // ソート（元インデックスは変えない）
+  if (sortOrder === 'title-asc') {
+    items.sort((a, b) => a.song.title.localeCompare(b.song.title, 'ja'));
+  } else if (sortOrder === 'title-desc') {
+    items.sort((a, b) => b.song.title.localeCompare(a.song.title, 'ja'));
+  } else if (sortOrder === 'rating-desc') {
+    items.sort((a, b) => b.song.rating - a.song.rating);
+  } else if (sortOrder === 'rating-asc') {
+    items.sort((a, b) => a.song.rating - b.song.rating);
+  }
+
+  if (items.length === 0) {
+    ul.innerHTML = `
+      <div style="text-align: center; padding: 20px; color: var(--text-muted);">
+        <div style="font-size: 32px; margin-bottom: 8px;">🔍</div>
+        <p>「${escapeHtml(filterText)}」に一致する曲がありません</p>
+      </div>
+    `;
+    return;
+  }
+
+  items.forEach(({ song, idx }) => {
     const li = document.createElement('li');
     let className = 'playlist-item';
     if (idx === currentPlayingIdx) className += ' playing';
     if (idx === editingIdx) className += ' editing';
-    
+
     li.className = className;
     li.tabIndex = 0;
-    li.draggable = true;
+    // ソート中はDnD無効（インデックスがずれるため）
+    if (sortOrder === 'default' && !query) {
+      li.draggable = true;
+    }
     li.setAttribute("data-idx", idx);
+
+    // タイトル・説明の検索ハイライト
+    const highlightedTitle = query ? highlight(escapeHtml(song.title), query) : escapeHtml(song.title);
+    const highlightedArticle = query ? highlight(escapeHtml(song.article || ''), query) : escapeHtml(song.article || '');
 
     li.innerHTML = `
       <div class="playlist-number">${(idx + 1).toString().padStart(2, '0')}</div>
       <div class="playlist-content">
-        <div class="meta-title" title="${escapeHtml(song.title)}">${escapeHtml(song.title)}</div>
-        <div class="meta-article" title="${escapeHtml(song.article||'')}">${escapeHtml(song.article||'')}</div>
+        <div class="meta-title" title="${escapeHtml(song.title)}">${highlightedTitle}</div>
+        <div class="meta-article" title="${escapeHtml(song.article||'')}">${highlightedArticle}</div>
         <div class="meta-video">${song.videoId}</div>
         <div class="meta-range">${formatTime(song.start)}～${formatTime(song.end)}</div>
         <div class="meta-rating">${ratingIcons(song.rating)}</div>
@@ -169,32 +209,30 @@ export function renderPlaylist({
       ${idx === editingIdx ? '<div class="editing-indicator">EDITING</div>' : ''}
     `;
 
-    // 各操作イベント
     const editBtn = li.querySelector('.edit-btn');
     const deleteBtn = li.querySelector('.delete-btn');
-    
-    // プレイリスト項目クリックで再生
+
     li.addEventListener('click', (e) => {
       if (!e.target.closest('.playlist-controls')) {
         onPlay && onPlay(idx);
       }
     });
-    
     editBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       onEdit && onEdit(idx);
     });
-    
     deleteBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       onDelete && onDelete(idx);
     });
-    
+
     ul.appendChild(li);
   });
 
-  // ドラッグ&ドロップ機能
-  setupDragAndDrop(ul);
+  // DnDはデフォルト順かつ検索なしの場合のみ有効
+  if (sortOrder === 'default' && !query) {
+    setupDragAndDrop(ul);
+  }
 }
 
 function setupDragAndDrop(ul) {
@@ -282,4 +320,14 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+// 検索キーワードをハイライト表示（既にescapeHtml済みの文字列を受け取る）
+function highlight(escapedHtml, query) {
+  if (!query) return escapedHtml;
+  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return escapedHtml.replace(
+    new RegExp(`(${escapedQuery})`, 'gi'),
+    '<mark style="background:rgba(255,200,0,0.4);border-radius:3px;padding:0 2px;">$1</mark>'
+  );
 }

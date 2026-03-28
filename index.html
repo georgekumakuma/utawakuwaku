@@ -693,6 +693,207 @@
       transform: translateX(0);
     }
 
+    /* ===== セグメント進捗バー ===== */
+    .segment-progress {
+      margin: 6px 4px 0;
+      display: none;
+    }
+    .segment-progress-track {
+      height: 5px;
+      background: var(--border-color);
+      border-radius: 3px;
+      overflow: hidden;
+      cursor: pointer;
+    }
+    .segment-progress-fill {
+      height: 100%;
+      background: var(--gradient-primary);
+      border-radius: 3px;
+      width: 0%;
+      transition: width 0.25s linear;
+    }
+    .segment-progress-times {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 3px;
+      font-family: 'SF Mono', Monaco, monospace;
+    }
+
+    /* ===== プレイリスト ツールバー（検索・ソート） ===== */
+    .playlist-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .playlist-search-wrap {
+      position: relative;
+      flex: 1;
+    }
+    .playlist-search-wrap input {
+      padding-left: 30px;
+      margin-bottom: 0;
+    }
+    .playlist-search-icon {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      pointer-events: none;
+      font-size: 12px;
+    }
+    .btn-clear-search {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 15px;
+      padding: 4px 6px;
+      line-height: 1;
+      display: none;
+      border-radius: 50%;
+      transition: color 0.2s;
+    }
+    .btn-clear-search:hover { color: var(--accent-danger); }
+    .sort-select {
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border-color);
+      background: rgba(255,255,255,0.8);
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    [data-theme="midnight"] .sort-select {
+      background: rgba(37,42,58,0.9);
+      color: var(--text-primary);
+    }
+    .sort-select:focus { border-color: var(--accent-primary); }
+    .playlist-count {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    /* ===== キーボードショートカットヘルプ ===== */
+    .keyboard-help-overlay {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      background: rgba(0,0,0,0.65);
+      backdrop-filter: blur(8px);
+      z-index: 10002;
+      display: none;
+      justify-content: center;
+      align-items: center;
+    }
+    .keyboard-help-overlay.show { display: flex; }
+    .keyboard-help-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      padding: 28px 32px;
+      min-width: 300px;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.35);
+      color: var(--text-primary);
+    }
+    .keyboard-help-card h3 {
+      margin: 0 0 16px 0;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--accent-primary);
+    }
+    .shortcut-list {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 18px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .shortcut-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+    .shortcut-key {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.07);
+      padding: 3px 10px;
+      border-radius: 6px;
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-primary);
+      border: 1px solid rgba(0,0,0,0.12);
+      box-shadow: 0 2px 0 rgba(0,0,0,0.1);
+      min-width: 32px;
+    }
+    [data-theme="midnight"] .shortcut-key {
+      background: rgba(255,255,255,0.1);
+      border-color: rgba(255,255,255,0.15);
+    }
+
+    /* ===== アクション付きトースト ===== */
+    .toast { display: flex; align-items: center; gap: 10px; }
+    .toast-msg { flex: 1; }
+    .toast-action-btn {
+      background: none;
+      border: 1px solid var(--accent-primary);
+      color: var(--accent-primary);
+      border-radius: 8px;
+      padding: 3px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: all 0.2s ease;
+    }
+    .toast-action-btn:hover {
+      background: var(--accent-primary);
+      color: white;
+    }
+
+    /* ===== ボリュームスライダー改善 ===== */
+    .volume-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 4px;
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+    .volume-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent-primary);
+      cursor: pointer;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+      transition: transform 0.15s ease;
+    }
+    .volume-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+    .volume-slider::-moz-range-thumb {
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: var(--accent-primary);
+      cursor: pointer;
+      border: none;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+    }
+
     @media (max-width: 1024px) {
       .main-layout {
         grid-template-columns: 1fr;
@@ -758,22 +959,50 @@
           </div>
           
           <div class="player-controls">
-            <button id="btnPrev" class="btn btn-control btn-icon" title="前へ">⏮</button>
-            <button id="btnPlayPause" class="btn btn-control btn-icon" title="再生/一時停止">▶</button>
+            <button id="btnPrev" class="btn btn-control btn-icon" title="前へ (←)">⏮</button>
+            <button id="btnPlayPause" class="btn btn-control btn-icon" title="再生/一時停止 (Space)">▶</button>
             <button id="btnStop" class="btn btn-control btn-icon" title="停止">■</button>
-            <button id="btnNext" class="btn btn-control btn-icon" title="次へ">⏭</button>
-            <button id="shuffleBtn" class="btn btn-control" title="シャッフル再生">🔀</button>
-            
+            <button id="btnNext" class="btn btn-control btn-icon" title="次へ (→)">⏭</button>
+            <button id="shuffleBtn" class="btn btn-control" title="シャッフル (S)">🔀</button>
+            <button id="loopBtn" class="btn btn-control" title="ループ (L)">🔁</button>
+
             <div class="volume-control">
-              <span>🔊</span>
+              <span id="volumeIcon" style="cursor:pointer;" title="ミュート (M)">🔊</span>
               <input type="range" id="volumeSlider" class="volume-slider" min="0" max="100" value="100">
               <span id="volumeDisplay">100%</span>
+            </div>
+
+            <button id="helpBtn" class="btn btn-control" title="キーボードショートカット (?)" style="font-size:14px;font-weight:700;">?</button>
+          </div>
+
+          <div id="segmentProgress" class="segment-progress">
+            <div class="segment-progress-track">
+              <div id="segmentProgressFill" class="segment-progress-fill"></div>
+            </div>
+            <div class="segment-progress-times">
+              <span id="segProgressCurrent">0:00</span>
+              <span id="segProgressTotal">0:00</span>
             </div>
           </div>
         </div>
 
         <div class="section compact">
           <h3>📋 プレイリスト</h3>
+          <div class="playlist-toolbar">
+            <div class="playlist-search-wrap">
+              <span class="playlist-search-icon">🔍</span>
+              <input type="text" id="playlistSearch" placeholder="タイトル・説明で検索...">
+            </div>
+            <button type="button" id="btnClearSearch" class="btn-clear-search" title="検索クリア">✕</button>
+            <select id="sortSelect" class="sort-select" title="並び替え">
+              <option value="default">並び替え</option>
+              <option value="title-asc">タイトル A→Z</option>
+              <option value="title-desc">タイトル Z→A</option>
+              <option value="rating-desc">評価 高→低</option>
+              <option value="rating-asc">評価 低→高</option>
+            </select>
+          </div>
+          <div id="playlistCount" class="playlist-count"></div>
           <ul id="playlist" class="playlist"></ul>
           
           <div style="display: flex; gap: 8px; margin-top: 15px; flex-wrap: wrap;">
@@ -851,7 +1080,25 @@
     </div>
   </div>
 
-  <div id="toast" class="toast"></div>
+  <div id="toast" class="toast"><span class="toast-msg"></span></div>
+
+  <!-- キーボードショートカットヘルプ -->
+  <div id="keyboardHelpOverlay" class="keyboard-help-overlay">
+    <div class="keyboard-help-card">
+      <h3>⌨️ キーボードショートカット</h3>
+      <ul class="shortcut-list">
+        <li class="shortcut-item"><span>再生 / 一時停止</span><kbd class="shortcut-key">Space</kbd></li>
+        <li class="shortcut-item"><span>前の曲</span><kbd class="shortcut-key">←</kbd></li>
+        <li class="shortcut-item"><span>次の曲</span><kbd class="shortcut-key">→</kbd></li>
+        <li class="shortcut-item"><span>シャッフル 切替</span><kbd class="shortcut-key">S</kbd></li>
+        <li class="shortcut-item"><span>ループ 切替</span><kbd class="shortcut-key">L</kbd></li>
+        <li class="shortcut-item"><span>ミュート 切替</span><kbd class="shortcut-key">M</kbd></li>
+        <li class="shortcut-item"><span>ヘルプを閉じる</span><kbd class="shortcut-key">Esc</kbd></li>
+        <li class="shortcut-item"><span>このヘルプを表示</span><kbd class="shortcut-key">?</kbd></li>
+      </ul>
+      <button id="closeKeyboardHelp" class="btn btn-secondary" style="width:100%;">閉じる</button>
+    </div>
+  </div>
 
   <script type="module" src="main.js"></script>
 </body>
