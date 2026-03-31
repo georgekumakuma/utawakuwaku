@@ -15,9 +15,28 @@ let currentPlayingIdx = null;
 let editingIndex = -1;
 let selectedRating = 1;
 let shuffleOn = false;
-let editingTitleOriginal = ""; // ★編集前タイトル保存用
-let userSeekedManually = false; // ユーザーが手動でシークしたかを追跡
-let endTimerDisabled = false; // 終了タイマーを無効化するフラグ
+let loopOn = false;           // ループ再生フラグ
+let editingTitleOriginal = "";
+let userSeekedManually = false;
+let endTimerDisabled = false;
+
+// 検索・ソート状態
+let searchQuery = "";
+let currentSortOrder = "default";
+
+// セグメント進捗バー
+let progressBarRAF = null;
+
+// Undo削除バッファ
+let deletedSongBuffer = null;
+let deletedSongTimeout = null;
+
+// ミュート状態
+let isMuted = false;
+let volumeBeforeMute = 100;
+
+// トーストタイマー
+let toastTimer = null;
 
 // テーマ管理
 let currentTheme = 0; // 0: 朝焼け, 1: 昼, 2: 夕焼け, 3: ミッドナイト
@@ -192,6 +211,7 @@ function initFormEventListeners(form) {
     form.querySelector('#endTime').value = formatTime(getCurrentTime());
   };
   // btnSetDiff（差分機能）は削除済み
+  monitorTitleForEdit(form);
 }
 
 // ★タイトル変更時に新規追加へ切り替え
@@ -235,11 +255,14 @@ function renderCurrentPlaylist() {
     ulId: "playlist",
     currentPlayingIdx,
     editingIdx: editingIndex,
+    filterText: searchQuery,
+    sortOrder: currentSortOrder,
     onPlay: playSongSection,
     onEdit: editSong,
     onDelete: deleteSong,
   });
   adjustWindowHeightByPlaylist();
+  updatePlaylistCount();
 }
 window.renderCurrentPlaylist = renderCurrentPlaylist;
 
@@ -257,7 +280,9 @@ async function playSongSection(idx) {
   currentPlayingIdx = idx;
   userSeekedManually = false;
   endTimerDisabled = false;
-  
+
+  startProgressBar();
+
   // 再生中の曲をフォームに自動表示
   autoFillFormWithCurrentSong(idx);
   
@@ -345,18 +370,45 @@ function editSong(idx) {
 function deleteSong(idx) {
   hideTimeEditPopup();
   const song = playlistData[idx];
-  if (confirm(`「${song.title}」を削除しますか？`)) {
-    playlistData.splice(idx, 1);
-    savePlaylistToStorage(); // 自動保存
-    renderCurrentPlaylist();
-    resetForm();
-    if (currentPlayingIdx === idx) {
-      currentPlayingIdx = null;
-    } else if (currentPlayingIdx > idx) {
-      currentPlayingIdx -= 1;
-    }
-    showToast("曲を削除しました");
+  const songTitle = song.title;
+
+  // Undo用にバッファ保存
+  if (deletedSongTimeout) clearTimeout(deletedSongTimeout);
+  deletedSongBuffer = { song: { ...song }, idx };
+
+  playlistData.splice(idx, 1);
+  savePlaylistToStorage();
+
+  if (currentPlayingIdx === idx) {
+    currentPlayingIdx = null;
+    cancelEndTimer();
+    stopProgressBar();
+  } else if (currentPlayingIdx !== null && currentPlayingIdx > idx) {
+    currentPlayingIdx -= 1;
   }
+  if (editingIndex === idx) {
+    resetForm();
+  } else if (editingIndex > idx) {
+    editingIndex -= 1;
+  }
+
+  renderCurrentPlaylist();
+
+  showToast(`「${songTitle}」を削除しました`, 5000, {
+    text: '元に戻す',
+    callback: () => {
+      if (!deletedSongBuffer) return;
+      const { song: s, idx: i } = deletedSongBuffer;
+      deletedSongBuffer = null;
+      clearTimeout(deletedSongTimeout);
+      playlistData.splice(Math.min(i, playlistData.length), 0, s);
+      savePlaylistToStorage();
+      renderCurrentPlaylist();
+      showToast('削除を取り消しました');
+    }
+  });
+
+  deletedSongTimeout = setTimeout(() => { deletedSongBuffer = null; }, 5000);
 }
 
 // 区間再生管理（改良版：ユーザーシーク検出機能付き）
@@ -410,10 +462,17 @@ function cancelEndTimer() {
   lastCheckedTime = 0;
 }
 
-// プレイリスト自動再生（改良版）
+// プレイリスト自動再生（ループ・シャッフル対応）
 async function playNextSong() {
   hideTimeEditPopup();
   if (!playlistData.length) return;
+
+  // ループ ON: 同じ曲を再再生
+  if (loopOn && currentPlayingIdx !== null) {
+    await playSongSection(currentPlayingIdx);
+    return;
+  }
+
   let nextIdx;
   if (shuffleOn) {
     do { nextIdx = Math.floor(Math.random() * playlistData.length); }
@@ -466,13 +525,32 @@ function extractYouTubeId(input) {
   return null;
 }
 
-// トースト通知機能
-function showToast(message, duration = 3000) {
+// トースト通知機能（アクションボタン対応）
+function showToast(message, duration = 3000, action = null) {
   const toast = document.getElementById('toast');
-  toast.textContent = message;
+  const msgEl = toast.querySelector('.toast-msg');
+
+  // 既存アクションボタンを削除
+  const oldBtn = toast.querySelector('.toast-action-btn');
+  if (oldBtn) oldBtn.remove();
+
+  msgEl.textContent = message;
+
+  if (action) {
+    const btn = document.createElement('button');
+    btn.className = 'toast-action-btn';
+    btn.textContent = action.text;
+    btn.onclick = () => {
+      action.callback();
+      toast.classList.remove('show');
+      clearTimeout(toastTimer);
+    };
+    toast.appendChild(btn);
+  }
+
   toast.classList.add('show');
-  
-  setTimeout(() => {
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
     toast.classList.remove('show');
   }, duration);
 }
@@ -481,11 +559,19 @@ function showToast(message, duration = 3000) {
 function initVolumeControl() {
   const volumeSlider = document.getElementById('volumeSlider');
   const volumeDisplay = document.getElementById('volumeDisplay');
-  
+
+  // 初期スタイル
+  updateVolumeSliderStyle(parseInt(volumeSlider.value));
+
   volumeSlider.addEventListener('input', (e) => {
     const volume = parseInt(e.target.value);
+    isMuted = false;
+    volumeBeforeMute = volume;
     setVolume(volume);
     volumeDisplay.textContent = `${volume}%`;
+    updateVolumeSliderStyle(volume);
+    const icon = document.getElementById('volumeIcon');
+    if (icon) icon.textContent = volume === 0 ? '🔇' : '🔊';
   });
 }
 
@@ -513,6 +599,93 @@ function formatTime(sec) {
   const m = Math.floor((sec % 3600) / 60);
   const s = sec % 60;
   return h > 0 ? `${h}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}` : `${m}:${s.toString().padStart(2,'0')}`;
+}
+
+// ===== セグメント進捗バー =====
+function startProgressBar() {
+  stopProgressBar();
+  const bar = document.getElementById('segmentProgress');
+  if (bar) bar.style.display = 'block';
+
+  function update() {
+    if (currentPlayingIdx === null) { stopProgressBar(); return; }
+    const song = playlistData[currentPlayingIdx];
+    if (!song) { stopProgressBar(); return; }
+    const cur = getCurrentTime();
+    const segDuration = song.end - song.start;
+    const elapsed = cur - song.start;
+    const pct = segDuration > 0 ? Math.min(100, Math.max(0, (elapsed / segDuration) * 100)) : 0;
+    const fill = document.getElementById('segmentProgressFill');
+    const curEl = document.getElementById('segProgressCurrent');
+    const totEl = document.getElementById('segProgressTotal');
+    if (fill) fill.style.width = pct + '%';
+    if (curEl) curEl.textContent = formatTime(Math.max(0, elapsed));
+    if (totEl) totEl.textContent = formatTime(Math.max(0, segDuration));
+    progressBarRAF = requestAnimationFrame(update);
+  }
+  progressBarRAF = requestAnimationFrame(update);
+}
+
+function stopProgressBar() {
+  if (progressBarRAF) { cancelAnimationFrame(progressBarRAF); progressBarRAF = null; }
+  const bar = document.getElementById('segmentProgress');
+  if (bar) bar.style.display = 'none';
+  const fill = document.getElementById('segmentProgressFill');
+  if (fill) fill.style.width = '0%';
+}
+
+// ===== ミュート切り替え =====
+function toggleMute() {
+  const slider = document.getElementById('volumeSlider');
+  const display = document.getElementById('volumeDisplay');
+  const icon = document.getElementById('volumeIcon');
+  if (isMuted) {
+    isMuted = false;
+    const vol = volumeBeforeMute || 100;
+    setVolume(vol);
+    if (slider) { slider.value = vol; updateVolumeSliderStyle(vol); }
+    if (display) display.textContent = vol + '%';
+    if (icon) icon.textContent = '🔊';
+    showToast('ミュート解除', 1500);
+  } else {
+    isMuted = true;
+    volumeBeforeMute = slider ? parseInt(slider.value) : 100;
+    setVolume(0);
+    if (slider) { slider.value = 0; updateVolumeSliderStyle(0); }
+    if (display) display.textContent = '0%';
+    if (icon) icon.textContent = '🔇';
+    showToast('ミュート', 1500);
+  }
+}
+
+// ボリュームスライダーのグラデーション更新
+function updateVolumeSliderStyle(volume) {
+  const slider = document.getElementById('volumeSlider');
+  if (slider) {
+    slider.style.background = `linear-gradient(to right, var(--accent-primary) ${volume}%, var(--border-color) ${volume}%)`;
+  }
+}
+
+// ===== プレイリスト件数表示 =====
+function updatePlaylistCount() {
+  const el = document.getElementById('playlistCount');
+  if (!el) return;
+  const total = playlistData.length;
+  const query = searchQuery.trim().toLowerCase();
+  if (query) {
+    const filtered = playlistData.filter(s =>
+      s.title.toLowerCase().includes(query) || (s.article || '').toLowerCase().includes(query)
+    ).length;
+    el.textContent = `${filtered} / ${total} 件`;
+  } else {
+    el.textContent = total > 0 ? `${total} 件` : '';
+  }
+}
+
+// ===== キーボードショートカットヘルプ =====
+function toggleKeyboardHelp() {
+  const overlay = document.getElementById('keyboardHelpOverlay');
+  if (overlay) overlay.classList.toggle('show');
 }
 
 // ウィンドウ高さ調整（Electron用）
@@ -576,8 +749,94 @@ window.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('shuffleBtn').onclick = function() {
     shuffleOn = !shuffleOn;
     this.classList.toggle('active', shuffleOn);
-    this.title = shuffleOn ? "シャッフル再生中" : "シャッフル再生";
+    this.title = shuffleOn ? 'シャッフル再生中 (S)' : 'シャッフル (S)';
+    showToast(shuffleOn ? 'シャッフル ON' : 'シャッフル OFF', 1500);
   };
+
+  // ===== ループボタン =====
+  document.getElementById('loopBtn').onclick = function() {
+    loopOn = !loopOn;
+    this.classList.toggle('active', loopOn);
+    this.title = loopOn ? 'ループ再生中 (L)' : 'ループ (L)';
+    showToast(loopOn ? 'ループ ON' : 'ループ OFF', 1500);
+  };
+
+  // ===== キーボードショートカットヘルプ =====
+  document.getElementById('helpBtn').addEventListener('click', toggleKeyboardHelp);
+  document.getElementById('closeKeyboardHelp').addEventListener('click', () => {
+    document.getElementById('keyboardHelpOverlay').classList.remove('show');
+  });
+  document.getElementById('keyboardHelpOverlay').addEventListener('click', (e) => {
+    if (e.target.id === 'keyboardHelpOverlay') {
+      document.getElementById('keyboardHelpOverlay').classList.remove('show');
+    }
+  });
+
+  // ===== 検索フィルター =====
+  document.getElementById('playlistSearch').addEventListener('input', (e) => {
+    searchQuery = e.target.value;
+    const clearBtn = document.getElementById('btnClearSearch');
+    if (clearBtn) clearBtn.style.display = searchQuery ? 'inline-flex' : 'none';
+    renderCurrentPlaylist();
+  });
+  document.getElementById('btnClearSearch').addEventListener('click', () => {
+    searchQuery = '';
+    document.getElementById('playlistSearch').value = '';
+    document.getElementById('btnClearSearch').style.display = 'none';
+    renderCurrentPlaylist();
+  });
+
+  // ===== ソート =====
+  document.getElementById('sortSelect').addEventListener('change', (e) => {
+    currentSortOrder = e.target.value;
+    renderCurrentPlaylist();
+  });
+
+  // ===== ミュートアイコンクリック =====
+  document.getElementById('volumeIcon').addEventListener('click', toggleMute);
+
+  // ===== キーボードショートカット =====
+  document.addEventListener('keydown', (e) => {
+    // input/textarea/select フォーカス中はスキップ
+    const tag = document.activeElement ? document.activeElement.tagName : '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    // ヘルプオーバーレイ表示中 Esc で閉じる
+    if (e.key === 'Escape') {
+      const overlay = document.getElementById('keyboardHelpOverlay');
+      if (overlay && overlay.classList.contains('show')) {
+        overlay.classList.remove('show');
+        return;
+      }
+      return;
+    }
+    switch (e.key) {
+      case ' ':
+        e.preventDefault();
+        document.getElementById('btnPlayPause').click();
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        playPrevSong();
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        playNextSong();
+        break;
+      case 's': case 'S':
+        document.getElementById('shuffleBtn').click();
+        break;
+      case 'l': case 'L':
+        document.getElementById('loopBtn').click();
+        break;
+      case 'm': case 'M':
+        toggleMute();
+        break;
+      case '?':
+        e.preventDefault();
+        toggleKeyboardHelp();
+        break;
+    }
+  });
   document.getElementById('videoForm').onsubmit = async (e) => {
     hideTimeEditPopup();
     e.preventDefault();
@@ -602,23 +861,31 @@ window.addEventListener('DOMContentLoaded', async () => {
       }
     }
   };
-  document.getElementById('btnExportCSV').onclick = () => {
+  document.getElementById('btnExportCSV').onclick = async () => {
     hideTimeEditPopup();
     const csv = playlistToCSV();
     const csvBox = document.getElementById('csvTextOutput');
     csvBox.style.display = "block";
     csvBox.value = csv;
-    csvBox.select();
+
+    // Clipboard API（モダン）→ fallback
     try {
-      document.execCommand("copy");
+      await navigator.clipboard.writeText(csv);
       showToast("CSVをクリップボードにコピーしました");
     } catch {
-      showToast("CSV出力完了（手動でコピーしてください）");
+      csvBox.select();
+      try {
+        document.execCommand("copy");
+        showToast("CSVをクリップボードにコピーしました");
+      } catch {
+        showToast("CSV出力完了（テキストエリアからコピーしてください）");
+      }
     }
+
     if (window.Blob && window.URL && window.URL.createObjectURL) {
       const now = new Date();
-      const y = now.getFullYear(), m = ("0"+(now.getMonth()+1)).slice(-2), d = ("0"+now.getDate()).slice(-2);
-      const defaultName = `utawakuwaku_playlist_${y}${m}${d}.csv`;
+      const y = now.getFullYear(), mo = ("0"+(now.getMonth()+1)).slice(-2), d = ("0"+now.getDate()).slice(-2);
+      const defaultName = `utawakuwaku_playlist_${y}${mo}${d}.csv`;
       const blob = new Blob([csv], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -627,7 +894,6 @@ window.addEventListener('DOMContentLoaded', async () => {
       document.body.appendChild(a);
       a.click();
       setTimeout(() => { URL.revokeObjectURL(url); document.body.removeChild(a); }, 500);
-      showToast("CSVファイルをダウンロードしました");
     }
   };
   document.getElementById('btnImportCSV').onclick = () => {
@@ -667,6 +933,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btnStop').onclick = () => {
     hideTimeEditPopup();
     cancelEndTimer();
+    stopProgressBar();
     stopVideo();
     currentPlayingIdx = null;
     renderCurrentPlaylist();
