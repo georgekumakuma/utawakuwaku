@@ -106,11 +106,13 @@ export function showTimeEditPopup({ fieldId, value, onOk, onCancel }) {
 // トースト通知を表示する関数（ここにも追加）
 function showToast(message) {
   const toast = document.getElementById('toast');
-  if (toast) {
-    toast.textContent = message;
-    toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), 3000);
-  }
+  if (!toast) return;
+  // textContent での上書きは .toast-msg 構造を破壊するので使わない
+  const msgEl = toast.querySelector('.toast-msg');
+  if (msgEl) msgEl.textContent = message;
+  else toast.textContent = message;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 3000);
 }
 
 // ポップアップを物理削除

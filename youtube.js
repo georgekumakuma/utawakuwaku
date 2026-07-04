@@ -6,6 +6,7 @@ let ytReady = false;
 let playerReadyCallback = null;
 let fadeAnimationId = null;
 let currentVolume = 100;
+let pendingVideo = null; // プレイヤー準備前に再生要求された動画を保持
 
 export function loadYouTubeAPI(onReadyCallback) {
   if (window.YT && window.YT.Player) {
@@ -32,35 +33,59 @@ function onYouTubeIframeAPIReady() {
     width: '100%',
     videoId: '',
     events: {
-      'onReady': () => { ytReady = true; },
+      'onReady': () => {
+        ytReady = true;
+        // 準備完了前に要求された動画があれば再生
+        if (pendingVideo) {
+          const v = pendingVideo;
+          pendingVideo = null;
+          setVideo(v);
+        }
+      },
       'onStateChange': (event) => {
         if (typeof window.onYouTubePlayerStateChange === 'function') {
           window.onYouTubePlayerStateChange(event);
+        }
+      },
+      'onError': (event) => {
+        if (typeof window.onYouTubePlayerError === 'function') {
+          window.onYouTubePlayerError(event);
         }
       }
     },
     playerVars: {
       'controls': 1,
       'modestbranding': 1,
-      'rel': 0
+      'rel': 0,
+      'playsinline': 1
     }
   });
+  // popup.js など他モジュールからも参照できるように公開
+  window.ytPlayer = ytPlayer;
 }
 
-// 動画再生（フェードイン対応）
+// 動画再生（フェードイン・区間終了指定対応）
 export function setVideo({ videoId, seekSec = 0, endSec = null, autoPlay = true, fadeIn = true }) {
-  if (!ytPlayer) return;
-  
-  if (fadeIn) {
-    // フェードイン開始
+  if (!ytPlayer || !ytReady) {
+    // プレイヤー未準備なら保留して onReady 後に再生
+    pendingVideo = { videoId, seekSec, endSec, autoPlay, fadeIn };
+    return;
+  }
+
+  const loadParams = { videoId, startSeconds: seekSec || 0 };
+  // endSeconds はプレイヤー側でも区間終了を強制する保険
+  // （バックグラウンドタブ等でJSタイマーが停止しても確実に止まる）
+  if (endSec && endSec > (seekSec || 0)) {
+    loadParams.endSeconds = endSec;
+  }
+
+  if (fadeIn && autoPlay) {
     ytPlayer.setVolume(0);
-    ytPlayer.loadVideoById({ videoId, startSeconds: seekSec || 0 });
-    if (autoPlay) {
-      ytPlayer.playVideo();
-      fadeVolume(0, currentVolume, 1000); // 1秒でフェードイン
-    }
+    ytPlayer.loadVideoById(loadParams);
+    ytPlayer.playVideo();
+    fadeVolume(0, currentVolume, 1000); // 1秒でフェードイン
   } else {
-    ytPlayer.loadVideoById({ videoId, startSeconds: seekSec || 0 });
+    ytPlayer.loadVideoById(loadParams);
     if (autoPlay) ytPlayer.playVideo();
   }
 }
@@ -68,6 +93,7 @@ export function setVideo({ videoId, seekSec = 0, endSec = null, autoPlay = true,
 // フェードアウト付き停止
 export function fadeOutAndStop(duration = 800) {
   return new Promise((resolve) => {
+    if (!ytPlayer || !ytPlayer.getVolume) { resolve(); return; }
     const startVolume = ytPlayer.getVolume();
     fadeVolume(startVolume, 0, duration, () => {
       pauseVideo();
@@ -82,22 +108,22 @@ function fadeVolume(fromVolume, toVolume, duration, onComplete) {
   if (fadeAnimationId) {
     cancelAnimationFrame(fadeAnimationId);
   }
-  
+
   const startTime = performance.now();
   const volumeDiff = toVolume - fromVolume;
-  
+
   function animate(currentTime) {
     const elapsed = currentTime - startTime;
     const progress = Math.min(elapsed / duration, 1);
-    
+
     // イーズアウト効果
     const easedProgress = 1 - Math.pow(1 - progress, 3);
     const currentVol = fromVolume + (volumeDiff * easedProgress);
-    
+
     if (ytPlayer && ytPlayer.setVolume) {
       ytPlayer.setVolume(Math.round(currentVol));
     }
-    
+
     if (progress < 1) {
       fadeAnimationId = requestAnimationFrame(animate);
     } else {
@@ -105,7 +131,7 @@ function fadeVolume(fromVolume, toVolume, duration, onComplete) {
       if (onComplete) onComplete();
     }
   }
-  
+
   fadeAnimationId = requestAnimationFrame(animate);
 }
 
@@ -115,10 +141,12 @@ export function pauseVideo() { ytPlayer && ytPlayer.pauseVideo && ytPlayer.pause
 export function stopVideo()  { ytPlayer && ytPlayer.stopVideo && ytPlayer.stopVideo(); }
 export function seekTo(sec)  { ytPlayer && ytPlayer.seekTo && ytPlayer.seekTo(sec, true); }
 export function getCurrentTime() { return ytPlayer && ytPlayer.getCurrentTime ? ytPlayer.getCurrentTime() : 0; }
+export function getDuration() { return ytPlayer && ytPlayer.getDuration ? ytPlayer.getDuration() : 0; }
 export function getPlayerState()  { return ytPlayer && ytPlayer.getPlayerState ? ytPlayer.getPlayerState() : -1; }
-export function setVolume(volume) { 
+export function getVideoData() { return ytPlayer && ytPlayer.getVideoData ? ytPlayer.getVideoData() : null; }
+export function setVolume(volume) {
   currentVolume = volume;
-  if (ytPlayer && ytPlayer.setVolume) ytPlayer.setVolume(volume); 
+  if (ytPlayer && ytPlayer.setVolume) ytPlayer.setVolume(volume);
 }
 export function getVolume() { return ytPlayer && ytPlayer.getVolume ? ytPlayer.getVolume() : currentVolume; }
 
@@ -144,3 +172,8 @@ export function setPlayerStateChangeCallback(fn) {
   window.onYouTubePlayerStateChange = fn;
 }
 
+// プレイヤーエラーイベント用（windowグローバルに割当）
+// エラーコード: 2=不正なID, 5=HTML5エラー, 100=削除/非公開, 101/150=埋め込み不可
+export function setPlayerErrorCallback(fn) {
+  window.onYouTubePlayerError = fn;
+}
