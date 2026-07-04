@@ -5,21 +5,58 @@ export const CSV_HEADER = "videoId,title,start,end,rating,article";
 
 export let playlistData = [];
 
-// プレイリストの初期化（ローカルストレージから読み込み、なければデフォルトCSVから読み込み）
+// ===== 複数プレイリスト管理 =====
+// v2ストア形式: { current: "リスト名", lists: { "リスト名": [songs] } }
+const STORE_KEY = 'utawakuwaku_playlists_v2';
+const LEGACY_KEY = 'utawakuwaku_playlist';
+const DEFAULT_LIST_NAME = 'マイリスト';
+
+let store = { current: DEFAULT_LIST_NAME, lists: {} };
+
+function persistStore() {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(store));
+  } catch (e) {
+    console.warn('ローカルストレージへの保存に失敗:', e);
+  }
+}
+
+// プレイリストの初期化
+// 優先順位: v2ストア → 旧形式（v1）からの移行 → デフォルトCSV
 export async function initializePlaylist() {
   try {
-    const saved = localStorage.getItem('utawakuwaku_playlist');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        playlistData = parsed;
-        return true; // 既存データを読み込み
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.lists && Object.keys(parsed.lists).length > 0) {
+        store = parsed;
+        if (!(store.current in store.lists)) {
+          store.current = Object.keys(store.lists)[0];
+        }
+        playlistData = store.lists[store.current] || [];
+        return true;
       }
     }
   } catch (e) {
     console.warn('ローカルストレージからの読み込みに失敗:', e);
   }
-  
+
+  // 旧形式（単一プレイリスト）からの移行
+  try {
+    const saved = localStorage.getItem(LEGACY_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        store = { current: DEFAULT_LIST_NAME, lists: { [DEFAULT_LIST_NAME]: parsed } };
+        playlistData = parsed;
+        persistStore();
+        return true;
+      }
+    }
+  } catch (e) {
+    console.warn('旧形式データの移行に失敗:', e);
+  }
+
   // デフォルトCSVファイルから読み込み
   try {
     const response = await fetch('./playlists/utawakuwaku_playlist_default.csv');
@@ -27,32 +64,80 @@ export async function initializePlaylist() {
       const csvText = await response.text();
       const defaultPlaylist = csvToPlaylist(csvText);
       if (defaultPlaylist.length > 0) {
+        store = { current: DEFAULT_LIST_NAME, lists: { [DEFAULT_LIST_NAME]: defaultPlaylist } };
         playlistData = defaultPlaylist;
-        savePlaylistToStorage(); // デフォルトを保存
+        persistStore();
         return false; // デフォルトデータを使用
       }
     }
   } catch (e) {
     console.warn('デフォルトCSVファイルの読み込みに失敗:', e);
   }
-  
+
   // 最後の手段として空のプレイリスト
+  store = { current: DEFAULT_LIST_NAME, lists: { [DEFAULT_LIST_NAME]: [] } };
   playlistData = [];
   return false;
 }
 
-// プレイリストをローカルストレージに保存
+// 現在のプレイリストをローカルストレージに保存
 export function savePlaylistToStorage() {
-  try {
-    localStorage.setItem('utawakuwaku_playlist', JSON.stringify(playlistData));
-  } catch (e) {
-    console.warn('ローカルストレージへの保存に失敗:', e);
-  }
+  store.lists[store.current] = playlistData;
+  persistStore();
 }
 
 export function setPlaylistData(arr) {
   playlistData = arr;
   savePlaylistToStorage(); // 自動保存
+}
+
+// ===== プレイリスト管理API =====
+export function getPlaylistNames() {
+  return Object.keys(store.lists);
+}
+
+export function getCurrentPlaylistName() {
+  return store.current;
+}
+
+export function switchPlaylist(name) {
+  if (!(name in store.lists) || name === store.current) return false;
+  store.lists[store.current] = playlistData;
+  store.current = name;
+  playlistData = store.lists[name];
+  persistStore();
+  return true;
+}
+
+// 新規プレイリスト作成（作成後そのリストに切り替える）
+export function createPlaylist(name, songs = []) {
+  if (!name || name in store.lists) return false;
+  store.lists[store.current] = playlistData;
+  store.lists[name] = songs;
+  store.current = name;
+  playlistData = songs;
+  persistStore();
+  return true;
+}
+
+export function renameCurrentPlaylist(newName) {
+  if (!newName || newName in store.lists) return false;
+  const oldName = store.current;
+  store.lists[newName] = playlistData;
+  delete store.lists[oldName];
+  store.current = newName;
+  persistStore();
+  return true;
+}
+
+// 現在のプレイリストを削除（最後の1つは削除不可）
+export function deleteCurrentPlaylist() {
+  if (Object.keys(store.lists).length <= 1) return false;
+  delete store.lists[store.current];
+  store.current = Object.keys(store.lists)[0];
+  playlistData = store.lists[store.current];
+  persistStore();
+  return true;
 }
 
 // デフォルトプレイリストに戻す
@@ -194,6 +279,9 @@ export function renderPlaylist({
 
     li.innerHTML = `
       <div class="playlist-number">${(idx + 1).toString().padStart(2, '0')}</div>
+      <img class="playlist-thumb" loading="lazy" alt=""
+           src="https://i.ytimg.com/vi/${encodeURIComponent(song.videoId)}/default.jpg"
+           onerror="this.style.visibility='hidden'">
       <div class="playlist-content">
         <div class="meta-title" title="${escapeHtml(song.title)}">${highlightedTitle}</div>
         <div class="meta-article" title="${escapeHtml(song.article||'')}">${highlightedArticle}</div>

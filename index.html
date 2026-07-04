@@ -894,6 +894,29 @@
       box-shadow: 0 1px 4px rgba(0,0,0,0.25);
     }
 
+    /* ===== プレイリスト管理（複数リスト） ===== */
+    .playlist-manager {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .playlist-manager select {
+      flex: 1;
+      min-width: 0;
+    }
+
+    /* ===== プレイリストのサムネイル ===== */
+    .playlist-thumb {
+      width: 56px;
+      height: 32px;
+      object-fit: cover;
+      border-radius: 6px;
+      flex-shrink: 0;
+      margin-left: 4px;
+      background: rgba(0,0,0,0.15);
+    }
+
     @media (max-width: 1024px) {
       .main-layout {
         grid-template-columns: 1fr;
@@ -930,6 +953,55 @@
       .btn {
         padding: 6px 10px;
         font-size: 12px;
+      }
+    }
+
+    /* ===== スマホ縦画面: シーン名を最優先で表示 ===== */
+    @media (max-width: 640px) {
+      .playlist-number {
+        display: none;
+      }
+      .playlist-thumb {
+        margin-left: 0;
+      }
+      .playlist-content {
+        grid-template-columns: 1fr auto;
+        grid-template-rows: auto auto;
+        gap: 2px 8px;
+        margin: 0 8px;
+      }
+      /* シーン名を1行目いっぱいに */
+      .meta-title {
+        grid-column: 1 / -1;
+        font-size: 14px;
+      }
+      /* 動画ID・説明は非表示（サムネイルで動画を識別） */
+      .meta-video,
+      .meta-article {
+        display: none;
+      }
+      .meta-range {
+        text-align: left;
+      }
+      .meta-rating {
+        text-align: right;
+        white-space: nowrap;
+      }
+      .meta-rating .star {
+        font-size: 11px;
+      }
+      .playlist-controls .btn-icon {
+        min-width: 32px;
+        min-height: 32px;
+      }
+      h1 {
+        font-size: 1.6rem;
+      }
+      .volume-control {
+        margin: 0 4px;
+      }
+      #volumeDisplay {
+        display: none;
       }
     }
   </style>
@@ -988,6 +1060,13 @@
 
         <div class="section compact">
           <h3>📋 プレイリスト</h3>
+          <div class="playlist-manager">
+            <select id="playlistSelect" class="sort-select" title="プレイリスト切り替え"></select>
+            <button type="button" id="btnNewPlaylist" class="btn btn-secondary btn-icon" title="新規プレイリスト">➕</button>
+            <button type="button" id="btnRenamePlaylist" class="btn btn-secondary btn-icon" title="名前を変更">✏️</button>
+            <button type="button" id="btnDeletePlaylist" class="btn btn-secondary btn-icon" title="プレイリストを削除">🗑️</button>
+            <button type="button" id="btnSharePlaylist" class="btn btn-secondary btn-icon" title="共有URLをコピー">🔗</button>
+          </div>
           <div class="playlist-toolbar">
             <div class="playlist-search-wrap">
               <span class="playlist-search-icon">🔍</span>
