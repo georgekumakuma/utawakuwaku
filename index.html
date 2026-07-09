@@ -894,6 +894,14 @@
       box-shadow: 0 1px 4px rgba(0,0,0,0.25);
     }
 
+    .player-note {
+      font-size: 11px;
+      color: var(--text-muted);
+      cursor: help;
+      white-space: nowrap;
+      border-bottom: 1px dotted var(--text-muted);
+    }
+
     /* ===== プレイリスト管理（複数リスト） ===== */
     .playlist-manager {
       display: flex;
@@ -1045,6 +1053,7 @@
             </div>
 
             <button id="helpBtn" class="btn btn-control" title="キーボードショートカット (?)" style="font-size:14px;font-weight:700;">?</button>
+            <span class="player-note" title="広告表示の有無は、このブラウザがYouTubeにログインしている状態を反映します。Premium会員のログイン状態が反映されない場合は、サードパーティCookieのブロック設定をご確認ください（詳細はREADME参照）。デスクトップアプリ(.exe)版は仕組み上ログインできないため常に広告ありです。">ℹ️ 広告について</span>
           </div>
 
           <div id="segmentProgress" class="segment-progress">
@@ -1066,6 +1075,10 @@
             <button type="button" id="btnRenamePlaylist" class="btn btn-secondary btn-icon" title="名前を変更">✏️</button>
             <button type="button" id="btnDeletePlaylist" class="btn btn-secondary btn-icon" title="プレイリストを削除">🗑️</button>
             <button type="button" id="btnSharePlaylist" class="btn btn-secondary btn-icon" title="共有URLをコピー">🔗</button>
+          </div>
+          <div id="samplePlaylistBank" class="playlist-manager" style="display:none;">
+            <select id="samplePlaylistSelect" class="sort-select" title="サンプルプレイリストを選択"></select>
+            <button type="button" id="btnLoadSamplePlaylist" class="btn btn-secondary btn-icon" title="選択したサンプルを新規プレイリストとして読み込む">📦</button>
           </div>
           <div class="playlist-toolbar">
             <div class="playlist-search-wrap">

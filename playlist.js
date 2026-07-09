@@ -140,6 +140,27 @@ export function deleteCurrentPlaylist() {
   return true;
 }
 
+// ===== サンプルプレイリストバンク =====
+// 同梱のサンプルCSV集（playlists/samples/）から選んで新規プレイリストとして読み込める
+export async function listSamplePlaylists() {
+  try {
+    const res = await fetch('./playlists/samples/manifest.json');
+    if (!res.ok) return [];
+    const list = await res.json();
+    return Array.isArray(list) ? list : [];
+  } catch (e) {
+    console.warn('サンプルプレイリスト一覧の取得に失敗:', e);
+    return [];
+  }
+}
+
+export async function fetchSamplePlaylist(file) {
+  const res = await fetch(`./playlists/samples/${encodeURIComponent(file)}`);
+  if (!res.ok) throw new Error(`サンプルCSVの取得に失敗しました（HTTP ${res.status}）`);
+  const csvText = await res.text();
+  return csvToPlaylist(csvText);
+}
+
 // デフォルトプレイリストに戻す
 export async function resetToDefaultPlaylist() {
   try {
