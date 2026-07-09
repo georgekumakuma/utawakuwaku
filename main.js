@@ -5,7 +5,8 @@ import {
   playlistData, setPlaylistData, playlistToCSV, csvToPlaylist, renderPlaylist,
   initializePlaylist, savePlaylistToStorage, resetToDefaultPlaylist,
   getPlaylistNames, getCurrentPlaylistName, switchPlaylist,
-  createPlaylist, renameCurrentPlaylist, deleteCurrentPlaylist
+  createPlaylist, renameCurrentPlaylist, deleteCurrentPlaylist,
+  listSamplePlaylists, fetchSamplePlaylist
 } from './playlist.js';
 import {
   loadYouTubeAPI, setVideo, playVideo, pauseVideo, stopVideo, seekTo,
@@ -1136,6 +1137,54 @@ function initPlaylistManager() {
       showToast('共有URLをコピーしました。このURLを開くとプレイリストを取り込めます');
     } catch {
       prompt('共有URL（コピーしてください）', url);
+    }
+  };
+
+  initSamplePlaylistBank();
+}
+
+// ===== サンプルプレイリストバンク =====
+// 以前のバージョンに同梱されていた「プレイリストバンク」機能の復元:
+// playlists/samples/ 配下の複数サンプルCSVから選んで新規プレイリストとして読み込める
+async function initSamplePlaylistBank() {
+  const wrap = document.getElementById('samplePlaylistBank');
+  const sel = document.getElementById('samplePlaylistSelect');
+  const btn = document.getElementById('btnLoadSamplePlaylist');
+  if (!wrap || !sel || !btn) return;
+
+  const samples = await listSamplePlaylists();
+  if (!samples.length) return; // サンプルが同梱されていない場合はUIごと非表示のまま
+
+  sel.innerHTML = '';
+  samples.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.file;
+    opt.textContent = s.label || s.file;
+    sel.appendChild(opt);
+  });
+  wrap.style.display = 'flex';
+
+  btn.onclick = async () => {
+    hideTimeEditPopup();
+    const chosen = samples.find(s => s.file === sel.value);
+    if (!chosen) return;
+    try {
+      const songs = await fetchSamplePlaylist(chosen.file);
+      if (!songs.length) throw new Error('空のサンプルデータです');
+      const base = chosen.label || chosen.file;
+      let name = base;
+      let n = 2;
+      while (!createPlaylist(name, songs)) {
+        name = `${base} ${n++}`;
+        if (n > 99) throw new Error('プレイリスト名の重複を解消できませんでした');
+      }
+      stopPlayback();
+      resetForm();
+      refreshPlaylistSelect();
+      renderCurrentPlaylist();
+      showToast(`「${name}」を読み込みました（${songs.length}曲）`);
+    } catch (e) {
+      showToast('サンプルの読み込みに失敗しました: ' + e.message);
     }
   };
 }
