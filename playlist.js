@@ -140,25 +140,62 @@ export function deleteCurrentPlaylist() {
   return true;
 }
 
-// ===== サンプルプレイリストバンク =====
-// 同梱のサンプルCSV集（playlists/samples/）から選んで新規プレイリストとして読み込める
+// ===== プレイリストバンク =====
+// 同梱プリセット集。定義は playlists/samples/playlistbank.json
+// （旧バージョンの presets 形式: id/name/description/file/icon）。
+// 各エントリを { file, label, description, icon } に正規化して返す。
 export async function listSamplePlaylists() {
   try {
+    const res = await fetch('./playlists/samples/playlistbank.json');
+    if (res.ok) {
+      const bank = await res.json();
+      if (bank && Array.isArray(bank.presets)) {
+        return bank.presets
+          .filter(p => p && p.file)
+          .map(p => ({
+            file: p.file,
+            label: p.name || p.file,
+            description: p.description || '',
+            icon: p.icon || '🎵'
+          }));
+      }
+    }
+  } catch (e) {
+    console.warn('playlistbank.jsonの取得に失敗:', e);
+  }
+
+  // 互換: 旧 manifest.json 形式（[{file, label}] の配列）
+  try {
     const res = await fetch('./playlists/samples/manifest.json');
-    if (!res.ok) return [];
-    const list = await res.json();
-    return Array.isArray(list) ? list : [];
+    if (res.ok) {
+      const list = await res.json();
+      if (Array.isArray(list)) {
+        return list
+          .filter(p => p && p.file)
+          .map(p => ({ file: p.file, label: p.label || p.file, description: '', icon: '🎵' }));
+      }
+    }
   } catch (e) {
     console.warn('サンプルプレイリスト一覧の取得に失敗:', e);
-    return [];
   }
+  return [];
 }
 
 export async function fetchSamplePlaylist(file) {
-  const res = await fetch(`./playlists/samples/${encodeURIComponent(file)}`);
-  if (!res.ok) throw new Error(`サンプルCSVの取得に失敗しました（HTTP ${res.status}）`);
-  const csvText = await res.text();
-  return csvToPlaylist(csvText);
+  // samples/ に無ければ playlists/ 直下も探す
+  // （「デフォルト」プリセットの utawakuwaku_playlist_default.csv はそちらにあるため）
+  for (const base of ['./playlists/samples/', './playlists/']) {
+    try {
+      const res = await fetch(base + encodeURIComponent(file));
+      if (res.ok) {
+        const arr = csvToPlaylist(await res.text());
+        if (arr.length) return arr;
+      }
+    } catch (e) {
+      // 次の場所を試す
+    }
+  }
+  throw new Error(`CSVを取得できませんでした: ${file}`);
 }
 
 // デフォルトプレイリストに戻す
