@@ -1159,7 +1159,8 @@ async function initSamplePlaylistBank() {
   samples.forEach(s => {
     const opt = document.createElement('option');
     opt.value = s.file;
-    opt.textContent = s.label || s.file;
+    opt.textContent = `${s.icon || '🎵'} ${s.label || s.file}`;
+    if (s.description) opt.title = s.description;
     sel.appendChild(opt);
   });
   wrap.style.display = 'flex';
