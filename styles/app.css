@@ -306,7 +306,6 @@ body:not(.is-playing) .row-eq i { animation-play-state: paused; height: 30%; }
 @keyframes eq { 0%, 100% { height: 30%; } 50% { height: 100%; } }
 .row.active .row-num { display: none; }
 .row.active .row-eq { display: flex; }
-.row.active .row-grip { display: none; }
 .row-thumb { position: relative; width: 64px; height: 36px; border-radius: 6px; overflow: hidden; background: var(--bg-3); flex: none; }
 .row-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .row-thumb-play { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, .45); color: #fff; opacity: 0; transition: opacity .12s; }

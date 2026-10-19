@@ -184,6 +184,7 @@ export class SongList {
     row._index = i;
     row._version = this._versionOf(item);
     row.dataset.id = s.id;
+    row.setAttribute('aria-rowindex', String(i + 1));
     row.style.transform = `translateY(${i * o.rowHeight}px)`;
     row.classList.toggle('active', s.id === this.activeId);
     row.classList.toggle('selected', this.selection.has(s.id));
