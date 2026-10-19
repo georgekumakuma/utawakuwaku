@@ -21,6 +21,9 @@ export const state = {
     sort: 'manual',    // 'manual' | 'title' | 'rating' | 'recent' | 'plays' | 'length'
     filterRating: 0,
     filterTag: '',
+    filterVersion: null, // { title } 同じ曲の別バージョンだけを表示
+    filterBroken: false, // リンク切れの曲だけを表示
+    sleep: null,         // スリープタイマー { mode: 'time', until } | { mode: 'song' }
     selection: new Set(),
     anchorId: null,
     editingId: null,   // 編集中の曲ID（null なら新規）
@@ -277,6 +280,8 @@ export function setView(view) {
   state.ui.view = view;
   state.ui.selection.clear();
   state.ui.search = '';
+  state.ui.filterVersion = null;
+  state.ui.filterBroken = false;
   commit('ui');
 }
 

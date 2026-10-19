@@ -14,6 +14,7 @@ import { listBankPresets, countBankCSV } from '../app/bank.js';
 import { toastError } from './toast.js';
 import { confirmDialog } from './dialog.js';
 import { openAddModal } from './addmodal.js';
+import { normalizeTitle, computeStats } from '../core/insights.js';
 
 const SORTS = [
   ['manual', '手動（リスト順）'], ['title', '曲名'], ['artist', 'アーティスト'], ['rating', '評価が高い順'],
@@ -41,10 +42,22 @@ function sortItems(items, sort) {
 }
 
 function filterItems(items) {
-  const { search, filterRating, filterTag } = state.ui;
+  const { search, filterRating, filterTag, filterVersion, filterBroken } = state.ui;
+  const vkey = filterVersion ? normalizeTitle(filterVersion.title) : null;
   return items.filter(it => matches(it.song, search) &&
     (!filterRating || it.song.rating >= filterRating) &&
-    (!filterTag || (it.song.tags || []).includes(filterTag)));
+    (!filterTag || (it.song.tags || []).includes(filterTag)) &&
+    (!vkey || normalizeTitle(it.song.title) === vkey) &&
+    (!filterBroken || !!it.song.broken));
+}
+
+function filterPills() {
+  const pills = [];
+  if (state.ui.filterVersion) pills.push(h('span.filter-pill', `「${state.ui.filterVersion.title}」のバージョン`,
+    h('button', { type: 'button', title: '絞り込みを解除', onclick: () => { state.ui.filterVersion = null; commit('ui'); } }, icon('close'))));
+  if (state.ui.filterBroken) pills.push(h('span.filter-pill', 'リンク切れのみ',
+    h('button', { type: 'button', title: '絞り込みを解除', onclick: () => { state.ui.filterBroken = false; commit('ui'); } }, icon('close'))));
+  return pills;
 }
 
 export function mountViews(root) {
@@ -104,7 +117,7 @@ export function mountViews(root) {
       ...[0, 4, 5, 6].map(r => h('button.chip', { type: 'button', class: state.ui.filterRating === r ? 'on' : '', onclick: () => { state.ui.filterRating = r; commit('ui'); } }, r ? `★${r}+` : 'すべて')));
     const tagChips = tags.length ? h('div.chip-group.tag-chips',
       ...tags.slice(0, 20).map(t => h('button.chip.chip-tag', { type: 'button', class: state.ui.filterTag === t ? 'on' : '', onclick: () => { state.ui.filterTag = state.ui.filterTag === t ? '' : t; commit('ui'); } }, '#' + t))) : null;
-    return h('div.view-tools', showSort ? sortSel : null, ratingBtns, tagChips);
+    return h('div.view-tools', ...filterPills(), showSort ? sortSel : null, ratingBtns, tagChips);
   }
 
   function emptyState(title, desc, action) {
@@ -194,7 +207,8 @@ export function mountViews(root) {
             if (!name) return;
             store.createPlaylist(name, currentItems.map(it => ({ ...it.song, id: undefined })));
             store.setView('playlist');
-          } }, icon('plus'))
+          } }, icon('plus')),
+          h('button.btn.btn-ghost.btn-round', { type: 'button', title: '削除・非公開になった動画を探す', onclick: () => actions.checkBrokenLinks() }, icon('flag'), h('span.hide-sm', ' リンク切れチェック'))
         )
       ),
       tools({ tags: store.allTags() }),
@@ -329,6 +343,75 @@ export function mountViews(root) {
     body.replaceChildren(grid);
   }
 
+  // ===== 統計 =====
+  function tile(label, value, sub) {
+    return h('div.stat-tile', h('div.stat-label', label), h('div.stat-value', value), sub ? h('div.stat-sub', sub) : null);
+  }
+
+  // 単一系列の縦棒グラフ（凡例なし・タイトルが系列名）。各棒にホバーで値を表示
+  function barChart(title, values, labelOf, { tickEvery = 1, unit = '回', empty = 'まだ再生履歴がありません' } = {}) {
+    if (!values.some(v => v > 0)) return h('div.chart-card', h('div.chart-title', title), h('p.hint', empty));
+    const max = Math.max(1, ...values);
+    const tip = h('div.chart-tip');
+    const bars = h('div.chart-bars', { role: 'img', 'aria-label': `${title}: ` + values.map((v, i) => `${labelOf(i)} ${v}${unit}`).join('、') });
+    values.forEach((v, i) => {
+      const bar = h('div.chart-col', { tabindex: 0 },
+        h('div.chart-bar', { style: { height: v ? `max(3px, ${(v / max) * 100}%)` : '0' } }));
+      const show = () => {
+        tip.textContent = `${labelOf(i)}: ${v}${unit}`;
+        tip.style.display = 'block';
+        const r = bar.getBoundingClientRect(), pr = bars.getBoundingClientRect();
+        tip.style.left = (r.left - pr.left + r.width / 2) + 'px';
+        bar.classList.add('hover');
+      };
+      const hide = () => { tip.style.display = 'none'; bar.classList.remove('hover'); };
+      bar.addEventListener('mouseenter', show); bar.addEventListener('focus', show);
+      bar.addEventListener('mouseleave', hide); bar.addEventListener('blur', hide);
+      bars.appendChild(bar);
+    });
+    const axis = h('div.chart-axis', ...values.map((_, i) => h('span', i % tickEvery === 0 ? labelOf(i) : '')));
+    return h('div.chart-card', h('div.chart-title', title, h('span.chart-max', `最大 ${max}${unit}`)), h('div.chart-plot', bars, tip), axis);
+  }
+
+  function rankList(title, rows, empty) {
+    return h('div.chart-card', h('div.chart-title', title),
+      rows.length ? h('ol.rank', ...rows) : h('p.hint', empty));
+  }
+
+  function renderStats() {
+    const st = computeStats(store.playlists(), state.history);
+    head.replaceChildren(h('div.view-head', h('div.view-head-main',
+      h('div.view-kicker', 'あなたの聴き方'), h('h1.view-title', '統計'),
+      h('div.view-meta', 'このブラウザに保存されたプレイリストと再生履歴（最新300件）から集計しています'))));
+    const now = new Date();
+    const dayLabel = (i) => { const d = new Date(now); d.setDate(d.getDate() - (29 - i)); return `${d.getMonth() + 1}/${d.getDate()}`; };
+    const maxPlays = Math.max(1, ...st.topSongs.map(s => s.playCount));
+    const wrap = h('div.stats',
+      h('div.stat-tiles',
+        tile('曲', `${st.songCount}`, `${st.videoCount}本の動画 · ${st.playlistCount}プレイリスト`),
+        tile('合計の長さ', formatDurationHuman(st.totalLength)),
+        tile('再生回数', `${st.totalPlays}`, st.neverPlayed ? `未再生 ${st.neverPlayed}曲` : 'すべて再生済み'),
+        tile('最近聴いた時間', formatDurationHuman(st.listened), `履歴 ${st.historyCount}件`),
+        st.broken ? tile('リンク切れ', `${st.broken}`, '曲が再生できない可能性') : null
+      ),
+      h('div.stats-grid',
+        barChart('日別の再生回数（30日）', st.daily, dayLabel, { tickEvery: 7 }),
+        barChart('時間帯別の再生回数', st.hours, (i) => `${i}時`, { tickEvery: 3 }),
+        rankList('よく聴く曲', st.topSongs.map(s => h('li.rank-row', { onclick: () => actions.playSong(s.id), title: '再生' },
+          h('span.rank-name', s.title), h('span.rank-bar', h('i', { style: { width: (s.playCount / maxPlays * 100) + '%' } })), h('span.rank-val', `${s.playCount}回`))),
+          'まだ再生履歴がありません'),
+        rankList('歌い手 / チャンネル', st.topSingers.map(x => h('li.rank-row', { onclick: () => { state.ui.view = 'library'; state.ui.search = x.name; commit('ui'); }, title: 'ライブラリで表示' },
+          h('span.rank-name', x.name), h('span.rank-val', `${x.count}曲 · ${x.plays}回`))),
+          '曲の「歌い手 / チャンネル」が未入力です（URLから追加した曲は自動で入ります）'),
+        rankList('アーティスト（原曲）', st.topArtists.map(x => h('li.rank-row', { onclick: () => { state.ui.view = 'library'; state.ui.search = x.name; commit('ui'); }, title: 'ライブラリで表示' },
+          h('span.rank-name', x.name), h('span.rank-val', `${x.count}曲 · ${x.plays}回`))),
+          'アーティストが未入力です（セットリスト貼り付けで「曲名 / アーティスト」形式なら自動で入ります）'),
+        barChart('評価の分布', st.ratings, (i) => `★${i + 1}`, { unit: '曲', empty: '曲がありません' })
+      )
+    );
+    body.replaceChildren(wrap);
+  }
+
   function render() {
     const view = state.ui.view;
     const changed = view !== currentView;
@@ -340,13 +423,14 @@ export function mountViews(root) {
     else if (view === 'history') renderHistory();
     else if (view === 'queue') renderQueue();
     else if (view === 'bank') renderBank();
+    else if (view === 'stats') renderStats();
     if (changed) body.scrollTop = 0;
   }
 
   store.on('data', render);
   store.on('ui', render);
   store.on('settings', render);
-  store.on('history', () => { if (currentView === 'history') render(); });
+  store.on('history', () => { if (currentView === 'history' || currentView === 'stats') render(); });
   if (ctx.engine) {
     ctx.engine.on('change', () => {
       const entry = lists[currentView];

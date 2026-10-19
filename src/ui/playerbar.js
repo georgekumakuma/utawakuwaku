@@ -35,6 +35,16 @@ export function mountPlayerbar(root) {
   const rateBtn = h('button.btn.btn-ghost.sm.pb-rate', { type: 'button', title: '再生速度', onclick: (e) => {
     showMenu([0.5, 0.75, 1, 1.25, 1.5, 2].map(r => ({ label: `${r}x`, checked: ctx.engine.state.rate === r, onClick: () => actions.setRate(r) })), { anchor: e.currentTarget });
   } }, '1x');
+  const btnSleep = h('button.icon-btn.pb-panel.pb-sleep', { type: 'button', title: 'スリープタイマー', onclick: (e) => {
+    const sl = state.ui.sleep;
+    showMenu([
+      { heading: 'スリープタイマー' },
+      ...[15, 30, 45, 60, 90].map(m => ({ label: `${m}分後に停止`, onClick: () => actions.setSleepTimer(m) })),
+      { label: 'この曲の終わりで停止', checked: !!(sl && sl.mode === 'song'), onClick: () => actions.setSleepTimer('song') },
+      sl ? 'sep' : null,
+      sl ? { label: '解除', icon: 'close', onClick: () => actions.setSleepTimer(null) } : null
+    ].filter(Boolean), { anchor: e.currentTarget });
+  } }, icon('clock'), h('span.pb-sleep-badge'));
   const btnEditor = h('button.icon-btn.pb-panel', { type: 'button', title: '編集パネル', onclick: () => actions.togglePanel('editor') }, icon('edit'));
   const btnQueue = h('button.icon-btn.pb-panel', { type: 'button', title: 'キュー (Q)', onclick: () => actions.togglePanel('queue') }, icon('queue'));
   const btnVideo = h('button.icon-btn.pb-panel', { type: 'button', title: '映像を隠す/表示 (V)', onclick: () => store.setSetting('showVideo', !state.settings.showVideo) }, icon('video'));
@@ -46,7 +56,7 @@ export function mountPlayerbar(root) {
       h('div.pb-transport', btnShuffle, btnPrev, btnPlay, btnNext, btnRepeat, btnStop),
       seek
     ),
-    h('div.pb-right', rateBtn, h('div.pb-volume', volIcon, vol), btnVideo, btnEditor, btnQueue)
+    h('div.pb-right', rateBtn, h('div.pb-volume', volIcon, vol), btnSleep, btnVideo, btnEditor, btnQueue)
   );
   thumb.addEventListener('error', () => { thumb.style.visibility = 'hidden'; });
   thumb.addEventListener('click', () => { const s = ctx.engine.state.song; if (s && !s._draft) { store.setView('playlist'); } });
@@ -112,6 +122,7 @@ export function mountPlayerbar(root) {
     btnEditor.classList.toggle('on', state.ui.editorOpen && state.ui.panel === 'editor');
     btnQueue.classList.toggle('on', state.ui.editorOpen && state.ui.panel === 'queue');
     btnVideo.classList.toggle('on', !state.settings.showVideo);
+    renderSleep();
     if (s) {
       pbTitle.textContent = s.title || '(無題)';
       pbSub.textContent = [s.artist, s.article].filter(Boolean).join(' · ');
@@ -122,6 +133,18 @@ export function mountPlayerbar(root) {
       root.querySelector('.pb-progress-mobile-fill').style.width = '0%';
     }
   }
+
+  function renderSleep() {
+    const sl = state.ui.sleep;
+    const badge = btnSleep.querySelector('.pb-sleep-badge');
+    btnSleep.classList.toggle('on', !!sl);
+    if (!sl) { badge.textContent = ''; btnSleep.title = 'スリープタイマー'; return; }
+    if (sl.mode === 'song') { badge.textContent = '♪'; btnSleep.title = 'この曲の終わりで停止'; return; }
+    const min = Math.max(1, Math.ceil((sl.until - Date.now()) / 60000));
+    badge.textContent = String(min);
+    btnSleep.title = `あと${min}分で停止`;
+  }
+  setInterval(renderSleep, 15000);
 
   function tick(t) {
     if (scrubbing) return;

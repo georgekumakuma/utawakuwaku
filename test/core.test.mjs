@@ -157,3 +157,44 @@ test('モデル: 移行とユーティリティ', () => {
   assert.notEqual(san.playlists[0].id, san.playlists[1].id);
   assert.equal(san.currentId, 'p1');
 });
+
+import { normalizeTitle, groupVersions, suggestTags, computeStats } from '../src/core/insights.js';
+
+test('同じ曲の判定（曲名の正規化）', () => {
+  assert.equal(normalizeTitle('夜に駆ける'), normalizeTitle('夜に駆ける (cover)'));
+  assert.equal(normalizeTitle('ＹＯＡＳＯＢＩ'), normalizeTitle('yoasobi'));
+  assert.equal(normalizeTitle('残酷な天使のテーゼ'), normalizeTitle('残酷な 天使の テーゼ【歌ってみた】'));
+  assert.notEqual(normalizeTitle('ドライフラワー'), normalizeTitle('夜に駆ける'));
+  assert.equal(normalizeTitle('【LIVE】'), 'live', '全体が括弧なら中身を残す');
+  const items = ['夜に駆ける', '夜に駆ける（short）', 'ドライフラワー'].map(t => ({ song: normalizeSong({ videoId: 'abc12345678', title: t }) }));
+  const g = groupVersions(items);
+  assert.equal(g.size, 1);
+  assert.equal([...g.values()][0].length, 2);
+});
+
+test('タグ候補', () => {
+  const s = normalizeSong({ videoId: 'abc12345678', title: 'T', article: '【歌枠】クリスマス前に！【ボカロ/アニソン】 #水城あくあ #shorts' });
+  assert.deepEqual(suggestTags(s), ['歌枠', 'ボカロ', 'アニソン', '水城あくあ']);
+  assert.deepEqual(suggestTags(s, ['ボカロ']), ['歌枠', 'アニソン', '水城あくあ']);
+});
+
+test('統計', () => {
+  const now = new Date(2026, 9, 19, 12).getTime();
+  const pls = [
+    { songs: [normalizeSong({ videoId: 'a0000000000', title: 'A', start: 0, end: 60, playCount: 3, singer: 'X', artist: 'P' }),
+              normalizeSong({ videoId: 'a0000000000', title: 'B', start: 60, end: 90, playCount: 0, singer: 'X' })] },
+    { songs: [normalizeSong({ videoId: 'a0000000000', title: 'A', start: 0, end: 60, playCount: 3 })] }
+  ];
+  const hist = [{ at: now - 3600000, start: 0, end: 60 }, { at: now - 86400000 * 2, start: 0, end: 30 }];
+  const st = computeStats(pls, hist, { now });
+  assert.equal(st.songCount, 2, '重複は1曲として数える');
+  assert.equal(st.totalLength, 90);
+  assert.equal(st.totalPlays, 3);
+  assert.equal(st.listened, 90);
+  assert.equal(st.topSongs[0].title, 'A');
+  assert.equal(st.topSingers[0].name, 'X');
+  assert.equal(st.topSingers[0].count, 2);
+  assert.equal(st.neverPlayed, 1);
+  assert.equal(st.daily[29], 1, '今日');
+  assert.equal(st.daily[27], 1, '2日前');
+});

@@ -115,6 +115,60 @@ async function test(name, fn) {
     await page.keyboard.press('Escape');
   });
 
+  await test('統計ビュー・同じ曲の別バージョン・タグ候補', async () => {
+    await page.evaluate(() => {
+      const { store } = window.__uta;
+      store.createPlaylist('版違い', [
+        { videoId: 'uvNqgBWckp4', title: '夜に駆ける', start: 0, end: 60, article: '【歌枠】テスト【ボカロ】', singer: '歌い手A' },
+        { videoId: 'mHSFy9Bbpew', title: '夜に駆ける (short ver.)', start: 0, end: 30, singer: '歌い手B' }
+      ]);
+    });
+    await sleep(300);
+    await page.locator('.row').first().click({ button: 'right' });
+    await sleep(150);
+    const v = page.locator('.menu-item', { hasText: '他のバージョン' });
+    assert.equal(await v.count(), 1);
+    await v.click();
+    await sleep(300);
+    assert.match(await page.locator('.view-title').innerText(), /ライブラリ/);
+    const titles = await page.locator('.row .row-title').allInnerTexts();
+    assert.ok(titles.length >= 2, `versions shown: ${titles}`);
+    assert.ok(titles.every(t => t.startsWith('夜に駆ける')), JSON.stringify(titles));
+    assert.ok(await page.locator('.filter-pill').count() === 1);
+    await page.locator('.filter-pill button').click();
+    await sleep(200);
+    await page.locator('.side-item', { hasText: '統計' }).click();
+    await sleep(300);
+    assert.ok(await page.locator('.stat-tile').count() >= 4);
+    assert.equal(await page.locator('.chart-card').count(), 6);
+    assert.match(await page.locator('.chart-card', { hasText: '歌い手' }).innerText(), /歌い手A/);
+    await page.screenshot({ path: `${OUT}/desktop-stats.png` });
+    await page.locator('.side-pl', { hasText: '版違い' }).click();
+    await sleep(200);
+    await page.locator('.view-list.songlist').focus();
+    await page.locator('.row').first().click({ button: 'right' });
+    await page.locator('.menu-item', { hasText: '編集' }).click();
+    await sleep(300);
+    const sugg = await page.locator('.tag-suggest .chip').allInnerTexts();
+    assert.deepEqual(sugg, ['+歌枠', '+ボカロ']);
+    await page.locator('.tag-suggest .chip').first().click();
+    assert.equal(await page.locator('.panel-editor input[placeholder^="タグ"]').inputValue(), '歌枠');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+  });
+
+  await test('スリープタイマーのメニュー', async () => {
+    await page.locator('.pb-sleep').click();
+    await sleep(150);
+    await page.locator('.menu-item', { hasText: '30分後' }).click();
+    await sleep(150);
+    assert.equal(await page.locator('.pb-sleep-badge').innerText(), '30');
+    await page.locator('.pb-sleep').click();
+    await page.locator('.menu-item', { hasText: '解除' }).click();
+    await sleep(150);
+    assert.equal(await page.evaluate(() => window.__uta.state.ui.sleep), null);
+  });
+
   await test('設定（テーマ切替）とリロード後の永続化', async () => {
     await page.locator('.side-link', { hasText: '設定' }).click();
     await sleep(200);
@@ -126,7 +180,7 @@ async function test(name, fn) {
     await page.waitForFunction(() => !!window.__uta, null, { timeout: 20000 });
     await sleep(500);
     const pls = (await page.locator('.side-pl').allInnerTexts()).map(t => t.replace(/\s+/g, ' ').trim());
-    assert.equal(pls.length, 3, JSON.stringify(pls));
+    assert.equal(pls.length, 4, JSON.stringify(pls));
     assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light');
   });
 

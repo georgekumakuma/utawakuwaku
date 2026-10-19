@@ -40,7 +40,9 @@ export function normalizeSong(raw) {
     note: String(raw.note || '').trim(),
     addedAt: Number(raw.addedAt) || Date.now(),
     playCount: Number(raw.playCount) || 0,
-    lastPlayedAt: Number(raw.lastPlayedAt) || 0
+    lastPlayedAt: Number(raw.lastPlayedAt) || 0,
+    gain: Math.max(-50, Math.min(50, Math.round(Number(raw.gain) || 0))), // 曲ごとの音量補正（%）
+    broken: typeof raw.broken === 'string' ? raw.broken : ''              // '' | 'missing' | 'restricted'
   };
 }
 

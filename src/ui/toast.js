@@ -35,7 +35,7 @@ export function toast(message, { duration = 3200, action = null, kind = 'info' }
   if (duration > 0) timer = setTimeout(dismiss, duration);
   el.addEventListener('mouseenter', () => clearTimeout(timer));
   el.addEventListener('mouseleave', () => { if (duration > 0) timer = setTimeout(dismiss, 1500); });
-  return { dismiss };
+  return { dismiss, el, setMessage: (m) => { el.querySelector(".toast-msg").textContent = m; } };
 }
 
 export const toastError = (msg, opts = {}) => toast(msg, { kind: 'error', duration: 6000, ...opts });

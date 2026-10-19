@@ -318,3 +318,103 @@ export function totalLength(songs) {
 export function makeDraft(partial = {}) {
   return normalizeSong({ videoId: partial.videoId || 'xxxxxxxxxxx', title: '', start: 0, end: 0, rating: 3, ...partial });
 }
+
+// ===== スリープタイマー =====
+// mode: 分数（数値）| 'song'（この曲の終わりで停止）| null（解除）
+let sleepTimer = null;
+export function setSleepTimer(mode) {
+  const e = engine(); if (!e) return;
+  clearTimeout(sleepTimer);
+  sleepTimer = null;
+  e.stopAfterCurrent = false;
+  state.ui.sleep = null;
+  if (mode === 'song') {
+    e.stopAfterCurrent = true;
+    state.ui.sleep = { mode: 'song' };
+    toast('この曲の終わりで停止します', { duration: 2000 });
+  } else if (typeof mode === 'number' && mode > 0) {
+    const until = Date.now() + mode * 60000;
+    state.ui.sleep = { mode: 'time', until };
+    sleepTimer = setTimeout(async () => {
+      sleepTimer = null;
+      state.ui.sleep = null;
+      commit('ui');
+      const deck = e.activeDeck;
+      if (deck && (e.state.status === 'playing' || e.state.status === 'loading')) {
+        await deck.fade(deck.volume, 0, 4000);
+        e.pause();
+        e.applyVolume();
+      }
+      toast('スリープタイマー: 再生を停止しました', { duration: 4000 });
+    }, mode * 60000);
+    toast(`${mode}分後に停止します`, { duration: 2000 });
+  } else {
+    toast('スリープタイマーを解除しました', { duration: 1500 });
+  }
+  commit('ui');
+}
+
+export function clearSleepState() {
+  state.ui.sleep = null;
+  commit('ui');
+}
+
+// ===== 同じ曲の別バージョン =====
+export function showVersions(song) {
+  state.ui.view = 'library';
+  state.ui.search = '';
+  state.ui.selection.clear();
+  state.ui.filterVersion = { title: song.title };
+  commit('ui');
+}
+
+// ===== リンク切れチェック =====
+// oEmbed は削除済みで 404、非公開・埋め込み禁止で 401/403 を返す。ネットワーク失敗は判定しない。
+let checking = false;
+export async function checkBrokenLinks() {
+  if (checking) { toast('チェック中です'); return; }
+  checking = true;
+  const all = [];
+  for (const p of store.playlists()) for (const s of p.songs) all.push(s);
+  const ids = Array.from(new Set(all.map(s => s.videoId)));
+  const result = new Map();
+  const progress = toast(`リンク切れをチェック中… 0 / ${ids.length}`, { duration: 0 });
+  let done = 0, failed = 0;
+  const worker = async () => {
+    while (ids.length) {
+      const id = ids.shift();
+      try {
+        const res = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent('https://www.youtube.com/watch?v=' + id)}&format=json`);
+        if (res.ok) result.set(id, '');
+        else if (res.status === 404 || res.status === 400) result.set(id, 'missing');
+        else if (res.status === 401 || res.status === 403) result.set(id, 'restricted');
+      } catch { failed++; }
+      done++;
+      progress.setMessage(`リンク切れをチェック中… ${done} / ${done + ids.length}`);
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  let broken = 0;
+  for (const s of all) {
+    if (!result.has(s.videoId)) continue;
+    s.broken = result.get(s.videoId);
+    if (s.broken) broken++;
+  }
+  commit('data');
+  progress.dismiss();
+  checking = false;
+  if (failed && failed === done) { toastError('YouTube に接続できなかったため、チェックできませんでした'); return; }
+  if (broken) {
+    toast(`${broken}曲が再生できない可能性があります（⚠ 印）`, { duration: 6000, action: { text: '表示', callback: () => { state.ui.view = 'library'; state.ui.filterBroken = true; state.ui.filterVersion = null; commit('ui'); } } });
+  } else {
+    toastSuccess(`リンク切れはありませんでした（${result.size}本の動画）${failed ? `・${failed}本は確認できず` : ''}`);
+  }
+}
+
+export function markBroken(videoId, reason) {
+  let changed = false;
+  for (const p of store.playlists()) for (const s of p.songs) {
+    if (s.videoId === videoId && s.broken !== reason) { s.broken = reason; changed = true; }
+  }
+  if (changed) commit('data');
+}

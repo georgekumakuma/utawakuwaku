@@ -136,13 +136,30 @@ async function main() {
     document.body.classList.toggle('is-playing', engine.state.status === 'playing' || engine.state.status === 'preview');
     wakelock.sync(engine.state.status === 'playing');
   });
-  engine.on('error', ({ message, song }) => {
+  engine.on('error', ({ code, message, song }) => {
+    if (song && !song._draft) {
+      if (code === 100 || code === 2) actions.markBroken(song.videoId, 'missing');
+      else if (code === 101 || code === 150) actions.markBroken(song.videoId, 'restricted');
+    }
     toastError(`⚠️ ${message}${song ? `：${song.title}` : ''}`, {
       action: song ? { text: 'YouTubeで開く', callback: () => actions.openOnYouTube(song) } : null
     });
   });
+  engine.on('playing', () => {
+    const s = engine.state.song;
+    if (s && !s._draft && s.broken) actions.markBroken(s.videoId, '');
+  });
   engine.on('notice', (msg) => toast(msg, { duration: 2500 }));
-  engine.on('finish', () => toast('プレイリストの最後まで再生しました', { duration: 2000 }));
+  let sleptAt = 0;
+  engine.on('sleep', () => {
+    sleptAt = performance.now();
+    actions.clearSleepState();
+    toast('スリープタイマー: この曲の終わりで停止しました', { duration: 4000 });
+  });
+  engine.on('finish', () => {
+    if (performance.now() - sleptAt < 500) return;
+    toast('プレイリストの最後まで再生しました', { duration: 2000 });
+  });
   installMediaSessionHandlers(engine);
 
   // プレイリスト編集を再生コンテキストに反映

@@ -66,6 +66,7 @@ export class Engine {
     this.lastTickCur = 0;       // 直前のティックで観測した再生位置（ENDED がシークによるものか判定する）
     this.lastSeekTarget = null;
     this.lastSeekAt = 0;
+    this.stopAfterCurrent = false; // スリープタイマー「この曲の終わりで停止」
   }
 
   // ===== イベント =====
@@ -117,7 +118,12 @@ export class Engine {
     });
   }
 
-  effectiveVolume() { return this.state.muted ? 0 : this.state.volume; }
+  // マスター音量 × 曲ごとの補正。YouTube の音量は 100 が上限なので、上げる補正はマスターが 100 未満のときだけ効く
+  effectiveVolume(song = this.state.song) {
+    if (this.state.muted) return 0;
+    const gain = song && song.gain ? song.gain : 0;
+    return Math.max(0, Math.min(100, this.state.volume * (1 + gain / 100)));
+  }
   applyVolume() {
     const v = this.effectiveVolume();
     if (this.activeDeck && !this.transitioning) this.activeDeck.setVolume(v);
@@ -265,7 +271,7 @@ export class Engine {
       this.startTicker();
       this.emit('songstart', { song, playlistId: this.state.playlistId, viaAdvance });
       await Promise.all([
-        newDeck.fade(0, this.effectiveVolume(), ms),
+        newDeck.fade(0, this.effectiveVolume(song), ms),
         oldDeck.fade(oldDeck.volume, 0, ms)
       ]);
       this.transitioning = false;
@@ -303,6 +309,12 @@ export class Engine {
   advance(token = this.token, { manual = false } = {}) {
     if (token !== this.token) return;
     this.token++;
+    if (this.stopAfterCurrent && !manual) {
+      this.stopAfterCurrent = false;
+      this.emit('sleep');
+      this.finish();
+      return;
+    }
     const next = this.peekNext();
     if (!next) {
       if (manual && this.state.order.length) {
@@ -648,9 +660,9 @@ export class Engine {
     if (this.state.endDisabled) return;
 
     const remaining = end - cur;
-    const lead = this.state.crossfade > 0 ? this.state.crossfade : END_EPSILON;
+    const lead = this.state.crossfade > 0 && !this.stopAfterCurrent ? this.state.crossfade : END_EPSILON;
 
-    if (this.state.gapless && remaining <= PRELOAD_LEAD && !this.preloaded && !this.transitioning) {
+    if (this.state.gapless && !this.stopAfterCurrent && remaining <= PRELOAD_LEAD && !this.preloaded && !this.transitioning) {
       this.preloadNext();
     }
     if (remaining <= lead) {

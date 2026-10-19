@@ -42,7 +42,8 @@ export function mountSidebar(root) {
       navItem('library', 'ライブラリ', 'library', libCount),
       navItem('history', '再生履歴', 'history'),
       navItem('queue', 'キュー', 'queue', queueCount || null),
-      navItem('bank', 'プレイリストバンク', 'bank')
+      navItem('bank', 'プレイリストバンク', 'bank'),
+      navItem('stats', '統計', 'star')
     );
     plList.replaceChildren(...store.playlists().map(pl => {
       const active = state.ui.view === 'playlist' && pl.id === state.data.currentId;

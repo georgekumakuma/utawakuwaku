@@ -4,6 +4,7 @@ import * as store from '../core/store.js';
 import * as actions from './actions.js';
 import { showMenu } from '../ui/menu.js';
 import { promptDialog } from '../ui/dialog.js';
+import { normalizeTitle } from '../core/insights.js';
 
 export function openSongMenu(item, selected, e, anchor, { playlistId = null, allItems = null } = {}) {
   const items = selected && selected.length > 1 ? selected : [item];
@@ -30,6 +31,12 @@ export function openSongMenu(item, selected, e, anchor, { playlistId = null, all
     onClick: () => actions.moveSongsTo(p.id, playlistId, ids)
   })) : [];
 
+  let versions = 0;
+  if (!many) {
+    const key = normalizeTitle(item.song.title);
+    if (key) versions = store.librarySongs().filter(x => normalizeTitle(x.song.title) === key).length;
+  }
+
   const menu = [
     { label: many ? `${items.length}曲を再生` : '再生', icon: 'play', onClick: () => {
       if (many) actions.playItems(items, items[0].song.id);
@@ -43,6 +50,7 @@ export function openSongMenu(item, selected, e, anchor, { playlistId = null, all
     { label: '別のプレイリストにコピー', icon: 'library', submenu: copyTargets },
     pl && moveTargets.length ? { label: '別のプレイリストへ移動', icon: 'share', submenu: moveTargets } : null,
     'sep',
+    !many && versions > 1 ? { label: `この曲の他のバージョン（${versions - 1}）`, icon: 'layers', onClick: () => actions.showVersions(item.song) } : null,
     !many ? { label: 'YouTubeで開く', icon: 'external', onClick: () => actions.openOnYouTube(item.song) } : null,
     !many ? { label: 'YouTubeリンクをコピー', icon: 'link', onClick: () => actions.copyYouTubeLink(item.song) } : null,
     pl ? 'sep' : null,

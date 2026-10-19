@@ -216,6 +216,37 @@ await test('再生速度・音量・ミュートがデッキへ反映される',
   await page.evaluate(() => { window.__uta.actions.toggleMute(); window.__uta.actions.setRate(1); });
 });
 
+await test('曲ごとの音量補正がマスター音量に掛け合わされる', async () => {
+  await page.evaluate(() => { window.__uta.actions.setVolume(60); window.__uta.engine.setRepeat('all'); window.__uta.engine.setGapless(true); });
+  await page.evaluate((ids) => { window.__uta.store.updateSong(ids[0], { gain: -50 }); window.__uta.actions.playSong(ids[0]); }, ids);
+  await waitFor("e.state.song.title === 'Song A' && e.state.status === 'playing'", 5000);
+  await sleep(1000);
+  const d = await decks();
+  assert.equal(d[await eng('e.active')].vol, 30, '60% × (1 - 50%)');
+  await page.evaluate((ids) => window.__uta.store.updateSong(ids[0], { gain: 0 }), ids);
+  await page.evaluate(() => window.__uta.actions.setVolume(100));
+});
+
+await test('スリープタイマー「この曲の終わりで停止」は先読みせず、区間の終わりで止まる', async () => {
+  await page.evaluate((ids) => window.__uta.actions.playSong(ids[1]), ids);
+  await waitFor("e.state.song.title === 'Song B' && e.state.status === 'playing'", 5000);
+  await page.evaluate(() => window.__uta.actions.setSleepTimer('song'));
+  await waitFor("e.state.status === 'idle'", 8000, 'stopped');
+  assert.equal(await eng('e.state.song.title'), 'Song B');
+  assert.equal(await eng('e.preloaded'), null);
+  assert.equal(await eng('e.stopAfterCurrent'), false);
+  assert.equal(await page.evaluate(() => window.__uta.state.ui.sleep), null);
+  assert.ok(await page.locator('.toast', { hasText: 'スリープタイマー' }).count() >= 1);
+});
+
+await test('再生エラーになった動画にリンク切れの印が付く', async () => {
+  const broken = await page.evaluate(() => {
+    const pl = window.__uta.store.playlists().find(p => p.name === 'ERR');
+    return pl.songs.map(s => s.broken);
+  });
+  assert.deepEqual(broken, ['missing', '']);
+});
+
 await browser.close();
 await srv.close();
 console.log(results.join('\n'));

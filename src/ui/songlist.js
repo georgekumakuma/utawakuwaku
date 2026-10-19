@@ -135,7 +135,7 @@ export class SongList {
 
   _versionOf(item) {
     const s = item.song;
-    return `${s.title}|${s.artist}|${s.article}|${s.start}|${s.end}|${s.rating}|${(s.tags || []).join(',')}|${s.playCount}|${item.at || ''}`;
+    return `${s.title}|${s.artist}|${s.article}|${s.start}|${s.end}|${s.rating}|${(s.tags || []).join(',')}|${s.playCount}|${s.broken}|${item.at || ''}`;
   }
 
   _createRow() {
@@ -190,6 +190,7 @@ export class SongList {
     row.classList.toggle('selected', this.selection.has(s.id));
     row.classList.toggle('focused', i === this.focusIndex);
     row.classList.toggle('from-queue', !!item.fromQueue);
+    row.classList.toggle('broken', !!s.broken);
     row.querySelector('.row-num').textContent = o.showIndex ? String(i + 1) : '';
     const img = row.querySelector('img');
     const src = thumbUrl(s.videoId, 'default');
@@ -204,6 +205,7 @@ export class SongList {
     articleEl.title = s.article || '';
     const extra = row.querySelector('.row-extra');
     extra.replaceChildren();
+    if (s.broken) extra.appendChild(h('span.chip.chip-warn', { title: s.broken === 'missing' ? '動画が削除されたか、IDが正しくありません' : '非公開、または埋め込み再生が許可されていません' }, s.broken === 'missing' ? '⚠ 削除済み' : '⚠ 再生不可'));
     if (o.showPlaylist && item.playlists) {
       for (const p of item.playlists.slice(0, 2)) extra.appendChild(h('span.chip.chip-pl', { title: p.name }, p.icon ? p.icon + ' ' : '', p.name));
       if (item.playlists.length > 2) extra.appendChild(h('span.chip', `+${item.playlists.length - 2}`));

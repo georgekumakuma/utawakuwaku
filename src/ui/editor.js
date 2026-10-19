@@ -10,6 +10,7 @@ import { parseTime, formatTime, roundTenth } from '../core/time.js';
 import { parseYouTubeInput, isValidVideoId, thumbUrl } from '../core/ytid.js';
 import { normalizeSong, hasValidEnd } from '../core/model.js';
 import { fetchVideoInfo } from '../player/yt.js';
+import { suggestTags } from '../core/insights.js';
 import { toast, toastError, toastSuccess } from './toast.js';
 import { confirmDialog } from './dialog.js';
 
@@ -66,6 +67,9 @@ export function mountEditor(root) {
   const singerInput = h('input.input', { type: 'text', placeholder: '歌い手 / チャンネル名' });
   const tagsInput = h('input.input', { type: 'text', placeholder: 'タグ（スペース区切り: バラード アニソン）' });
   const noteInput = h('textarea.input', { rows: 2, placeholder: 'メモ' });
+  const tagSuggest = h('div.tag-suggest');
+  const gainInput = h('input', { type: 'range', min: -50, max: 50, step: 5, value: 0, 'aria-label': '音量補正' });
+  const gainVal = h('span.gain-val', '±0%');
   const ratingStars = stars(3, { interactive: true, onChange: (v) => { draft.rating = v; setStars(ratingStars, v); touch(); } });
   const targetSel = h('select.select.sm', { title: '追加先のプレイリスト' });
 
@@ -88,8 +92,10 @@ export function mountEditor(root) {
         h('div.field', h('label', '歌い手 / チャンネル'), singerInput)),
       h('div.field', h('label', '配信・動画タイトル'), articleInput),
       h('div.field-2',
-        h('div.field', h('label', 'タグ'), tagsInput),
+        h('div.field', h('label', 'タグ'), tagsInput, tagSuggest),
         h('div.field', h('label', '評価'), h('div.field-stars', ratingStars))),
+      h('div.field', h('label', '音量補正（この曲だけ）'), h('div.gain-row', gainInput, gainVal),
+        h('div.hint', '配信ごとの音量差をならします。上げる補正はマスター音量が100%未満のときだけ効きます')),
       h('div.field', h('label', 'メモ'), noteInput),
       h('div.field.field-target', h('label', '追加先'), targetSel),
       errBox
@@ -101,7 +107,31 @@ export function mountEditor(root) {
   const bindText = (input, key) => input.addEventListener('input', () => { draft[key] = input.value; touch(); });
   bindText(titleInput, 'title'); bindText(artistInput, 'artist'); bindText(articleInput, 'article');
   bindText(singerInput, 'singer'); bindText(noteInput, 'note');
-  tagsInput.addEventListener('input', () => { draft.tags = tagsInput.value.split(/[\s,、#]+/).filter(Boolean); touch(); });
+  tagsInput.addEventListener('input', () => { draft.tags = tagsInput.value.split(/[\s,、#]+/).filter(Boolean); touch(); renderTagSuggest(); });
+  articleInput.addEventListener('input', () => renderTagSuggest());
+  gainInput.addEventListener('input', () => {
+    draft.gain = parseInt(gainInput.value, 10) || 0;
+    renderGain();
+    touch();
+    // 試聴中・編集中の動画にすぐ反映
+    if (ctx.engine && ctx.engine.state.song && ctx.engine.state.song.videoId === draft.videoId) {
+      ctx.engine.state.song.gain = draft.gain;
+      ctx.engine.applyVolume();
+    }
+  });
+  function renderGain() {
+    const g = draft.gain || 0;
+    gainVal.textContent = g === 0 ? '±0%' : `${g > 0 ? '+' : ''}${g}%`;
+  }
+  function renderTagSuggest() {
+    const list = suggestTags(draft, draft.tags);
+    tagSuggest.replaceChildren(...(list.length ? [h('span', '候補:')] : []), ...list.map(t =>
+      h('button.chip.chip-tag', { type: 'button', title: 'タグに追加', onclick: () => {
+        draft.tags = [...(draft.tags || []), t];
+        tagsInput.value = draft.tags.join(' ');
+        touch(); renderTagSuggest();
+      } }, '+' + t)));
+  }
   const commitTime = (input, key) => {
     const v = parseTime(input.value);
     if (input.value.trim() === '' && key === 'end') { setField('end', 0); return; }
@@ -135,6 +165,7 @@ export function mountEditor(root) {
       if (!draft.article) { draft.article = i.title; articleInput.value = i.title; }
       if (!draft.singer) { draft.singer = i.author; singerInput.value = i.author; }
       renderVideoInfo();
+      renderTagSuggest();
     } catch { /* 取得できなくても続行 */ }
   }, 250);
 
@@ -280,6 +311,9 @@ export function mountEditor(root) {
     singerInput.value = draft.singer;
     tagsInput.value = (draft.tags || []).join(' ');
     noteInput.value = draft.note;
+    gainInput.value = String(draft.gain || 0);
+    renderGain();
+    renderTagSuggest();
     setStars(ratingStars, draft.rating);
     errBox.textContent = '';
     renderVideoInfo();
