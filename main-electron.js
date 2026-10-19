@@ -13,8 +13,11 @@ serverApp.listen(SERVER_PORT, () => {
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 720,
-    height: 1080,
+    width: 1280,
+    height: 860,
+    minWidth: 480,
+    minHeight: 600,
+    backgroundColor: '#0e0f14',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
