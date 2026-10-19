@@ -1,6 +1,6 @@
 // メインコンテンツのビュー: プレイリスト / ライブラリ / 履歴 / キュー / バンク
 
-import { h, icon } from './dom.js';
+import { h, icon, copyText } from './dom.js';
 import * as store from '../core/store.js';
 import { state, commit } from '../core/store.js';
 import * as actions from '../app/actions.js';
@@ -10,8 +10,9 @@ import { showMenu } from './menu.js';
 import { openSongMenu } from '../app/songmenu.js';
 import { formatDurationHuman, formatRelative } from '../core/time.js';
 import { hasValidEnd, normalizeSong } from '../core/model.js';
-import { listBankPresets, countBankCSV } from '../app/bank.js';
-import { toastError } from './toast.js';
+import { listBankPresets, countBankCSV, listDirectory, inspectSharedUrl } from '../app/bank.js';
+import { openAddBankDialog, loadSharedPlaylist, removeSharedBank, copyBankLink, editingGuide, sourceOf, refreshFromSource, copyForSpreadsheet } from './sharedbank.js';
+import { toast, toastError, toastSuccess } from './toast.js';
 import { confirmDialog } from './dialog.js';
 import { openAddModal } from './addmodal.js';
 import { normalizeTitle, computeStats } from '../core/insights.js';
@@ -174,6 +175,9 @@ export function mountViews(root) {
       { label: 'CSVを書き出し（ダウンロード）', icon: 'download', onClick: () => actions.exportCSV(pl.id) },
       { label: 'CSVをクリップボードにコピー', icon: 'file', onClick: () => actions.copyCSV(pl.id) },
       { label: 'セットリスト（タイムスタンプ）をコピー', icon: 'text', onClick: () => actions.copySetlist(pl.id) },
+      { label: 'スプレッドシート用にコピー（公開用）', icon: 'layers', onClick: () => copyForSpreadsheet(pl) },
+      sourceOf(pl) ? 'sep' : null,
+      sourceOf(pl) ? { label: `最新版で更新（${sourceOf(pl).label}）`, icon: 'download', onClick: () => refreshFromSource(pl) } : null,
       'sep',
       { label: '全曲を次に再生', icon: 'next', onClick: () => actions.enqueue(actions.itemsOfPlaylist(pl), { next: true }) },
       { label: '全曲をキューに追加', icon: 'queue', onClick: () => actions.enqueue(actions.itemsOfPlaylist(pl)) },
@@ -301,14 +305,49 @@ export function mountViews(root) {
 
   // ===== バンク =====
   let bankLoading = false;
+  let dirLoading = false;
+  const loadedFrom = (source) => store.playlists().filter(pl => pl.source === source);
+
+  function bankCard({ icon: ic, name, desc, meta = [], primary, secondary = [], menu, sub = false, head: isHead = false }) {
+    return h('div.bank-card', { class: `${sub ? 'bank-sub' : ''} ${isHead ? 'bank-head' : ''}` },
+      h('div.bank-icon', ic),
+      h('div.bank-body', h('div.bank-name', name), desc ? h('div.bank-desc', desc) : null, h('div.bank-meta', ...meta)),
+      h('div.bank-actions', primary, ...secondary,
+        menu ? h('button.icon-btn.sm', { type: 'button', title: 'メニュー', onclick: (e) => showMenu(menu, { anchor: e.currentTarget }) }, icon('more')) : null)
+    );
+  }
+
+  function loadButton(run) {
+    return h('button.btn.btn-primary.sm', { type: 'button', onclick: async (ev) => {
+      const btn = ev.currentTarget; btn.disabled = true;
+      try { await run(); } catch (err) { toastError('読み込みに失敗しました: ' + err.message); btn.disabled = false; }
+    } }, icon('download'), ' 読み込む');
+  }
+
+  function openButton(loaded) {
+    return loaded.length ? h('button.btn.btn-ghost.sm', { type: 'button', onclick: () => { store.switchPlaylist(loaded[0].id); store.setView('playlist'); } }, '開く') : null;
+  }
+
+  function loadedChip(loaded) {
+    return loaded.length ? h('span.chip.chip-ok', `読み込み済み${loaded.length > 1 ? ' ×' + loaded.length : ''}`) : null;
+  }
+
+  function hostOf(url) { try { const u = new URL(url); return u.hostname === 'docs.google.com' ? 'Googleスプレッドシート' : u.hostname; } catch { return ''; } }
+
+  function section(title, desc, ...children) {
+    return h('section.bank-section', h('div.bank-section-head', h('h2', title), desc ? h('p', desc) : null), ...children);
+  }
+
   async function renderBank() {
     head.replaceChildren(
       h('div.view-head',
         h('div.view-head-main',
-          h('div.view-kicker', '同梱プリセット'),
-          h('h1.view-title', 'プレイリストバンク'),
-          h('div.view-meta', 'アプリに同梱されたプレイリスト集。読み込むと新しいプレイリストとして追加され、自作のリストとは別に管理されます')
-        )
+          h('div.view-kicker', 'プレイリストを探す'),
+          h('h1.view-title', 'バンク'),
+          h('div.view-meta', '読み込んだプレイリストは「あなたのプレイリスト」にコピーされ、自由に編集できます')
+        ),
+        h('div.view-actions',
+          h('button.btn.btn-primary.btn-round', { type: 'button', onclick: () => openAddBankDialog() }, icon('link'), ' URLでバンクを追加'))
       )
     );
     if (!state.ui.bank.length && !bankLoading) {
@@ -317,30 +356,77 @@ export function mountViews(root) {
       bankLoading = false;
       if (state.ui.view !== 'bank') return;
     }
-    const grid = h('div.bank-grid');
-    if (!state.ui.bank.length) grid.appendChild(emptyState('プリセットが見つかりません', 'playlists/samples/playlistbank.json を確認してください'));
+    if (!state.ui.directory && !dirLoading) {
+      dirLoading = true;
+      listDirectory().then(d => { state.ui.directory = d; dirLoading = false; if (state.ui.view === 'bank') renderBank(); });
+    }
+
+    // --- 追加した共有バンク ---
+    const mine = h('div.bank-grid');
+    for (const b of store.banks()) {
+      const menu = [
+        { label: '紹介リンクをコピー', icon: 'share', onClick: () => copyBankLink(b) },
+        { label: '公開URLをコピー', icon: 'link', onClick: async () => { const ok = await copyText(b.url); toast(ok ? 'URLをコピーしました' : 'コピーできませんでした'); } },
+        { label: '公開元を開く', icon: 'external', onClick: () => window.open(b.url, '_blank', 'noopener') },
+        'sep',
+        { label: '一覧から外す', icon: 'trash', danger: true, onClick: () => removeSharedBank(b) }
+      ];
+      if (b.kind === 'bank') {
+        mine.appendChild(bankCard({ head: true, icon: b.icon, name: b.name, desc: b.description, meta: [h('span', `${b.presets.length}個のプレイリスト · ${hostOf(b.url)}`)], menu,
+          primary: h('button.btn.btn-ghost.sm', { type: 'button', title: '最新の一覧を取得', onclick: async (ev) => {
+            ev.currentTarget.disabled = true;
+            try { const r = await inspectSharedUrl(b.url); if (r.kind === 'bank') { store.saveBank({ ...b, presets: r.presets, fetchedAt: Date.now() }); toastSuccess('一覧を更新しました'); } }
+            catch (e) { toastError(e.message); ev.currentTarget.disabled = false; }
+          } }, '一覧を更新') }));
+        for (const p of b.presets) {
+          const loaded = loadedFrom(`shared:${b.url}#${p.id}`);
+          mine.appendChild(bankCard({ sub: true, icon: p.icon, name: p.name, desc: p.description, meta: [loadedChip(loaded)],
+            primary: loadButton(() => loadSharedPlaylist(b, p)), secondary: [openButton(loaded)] }));
+        }
+      } else {
+        const loaded = loadedFrom(`shared:${b.url}`);
+        mine.appendChild(bankCard({ icon: b.icon, name: b.name, desc: b.description,
+          meta: [h('span', `${b.count ? b.count + '曲 · ' : ''}${hostOf(b.url)}`), loadedChip(loaded)], menu,
+          primary: loadButton(() => loadSharedPlaylist(b)), secondary: [openButton(loaded)] }));
+      }
+    }
+    if (!store.banks().length) {
+      mine.appendChild(h('button.bank-card.bank-empty', { type: 'button', onclick: () => openAddBankDialog() },
+        h('div.bank-icon', icon('link')),
+        h('div.bank-body', h('div.bank-name', 'URLでバンクを追加'),
+          h('div.bank-desc', 'ファンの方が Googleスプレッドシートなどで公開しているプレイリストの URL を登録すると、ここに並びます'))));
+    }
+
+    // --- みんなの共有バンク（作者が紹介） ---
+    const dir = state.ui.directory;
+    let dirBody;
+    if (!dir) dirBody = h('p.hint', '読み込み中…');
+    else if (!dir.length) dirBody = h('p.hint', '作者が紹介している共有バンクは、まだありません。');
+    else {
+      dirBody = h('div.bank-grid', ...dir.map(d => {
+        const added = store.bankByUrl(d.url);
+        return bankCard({ icon: d.icon, name: d.name, desc: d.description, meta: [d.author ? h('span', `公開: ${d.author}`) : null, added ? h('span.chip.chip-ok', '追加済み') : null],
+          primary: added ? null : h('button.btn.btn-primary.sm', { type: 'button', onclick: () => openAddBankDialog(d.url) }, icon('plus'), ' 追加') });
+      }));
+    }
+
+    // --- サンプル（作者のおすすめ） ---
+    const samples = h('div.bank-grid');
+    if (!state.ui.bank.length) samples.appendChild(h('p.hint', 'サンプルが見つかりません（playlists/samples/playlistbank.json）'));
     for (const p of state.ui.bank) {
-      const loaded = store.playlists().filter(pl => pl.source === `bank:${p.id}`);
+      const loaded = loadedFrom(`bank:${p.id}`);
       const countEl = h('span.bank-count', '…');
       countBankCSV(p.file).then(n => { countEl.textContent = n == null ? '取得失敗' : `${n}曲`; });
-      const card = h('div.bank-card',
-        h('div.bank-icon', p.icon),
-        h('div.bank-body',
-          h('div.bank-name', p.name),
-          h('div.bank-desc', p.description || ''),
-          h('div.bank-meta', countEl, loaded.length ? h('span.chip.chip-ok', `読み込み済み${loaded.length > 1 ? ' ×' + loaded.length : ''}`) : null)
-        ),
-        h('div.bank-actions',
-          h('button.btn.btn-primary.sm', { type: 'button', onclick: async (ev) => {
-            const btn = ev.currentTarget; btn.disabled = true;
-            try { await actions.loadBankPreset(p); } catch (err) { toastError('読み込みに失敗しました: ' + err.message); btn.disabled = false; }
-          } }, icon('download'), ' 読み込む'),
-          loaded.length ? h('button.btn.btn-ghost.sm', { type: 'button', onclick: () => { store.switchPlaylist(loaded[0].id); store.setView('playlist'); } }, '開く') : null
-        )
-      );
-      grid.appendChild(card);
+      samples.appendChild(bankCard({ icon: p.icon, name: p.name, desc: p.description, meta: [countEl, loadedChip(loaded)],
+        primary: loadButton(() => actions.loadBankPreset(p)), secondary: [openButton(loaded)] }));
     }
-    body.replaceChildren(grid);
+
+    body.replaceChildren(h('div.bank-page',
+      section('追加した共有バンク', '他の人が公開したプレイリスト。公開した人が更新すると、読み込み直したときに反映されます', mine),
+      section('みんなの共有バンク', '作者が紹介している共有バンクです', dirBody),
+      section('サンプル（作者のおすすめ）', 'アプリに同梱されている使用例です', samples),
+      editingGuide()
+    ));
   }
 
   // ===== 統計 =====

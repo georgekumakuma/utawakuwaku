@@ -198,3 +198,42 @@ test('統計', () => {
   assert.equal(st.daily[29], 1, '今日');
   assert.equal(st.daily[27], 1, '2日前');
 });
+
+import { normalizeBankUrl, parseBankText, songsToTSV } from '../src/core/sharedbank.js';
+
+test('共有バンク: URL の正規化', () => {
+  assert.deepEqual(normalizeBankUrl('https://docs.google.com/spreadsheets/d/e/2PACX-abc_DEF/pubhtml?gid=123&single=true'),
+    { url: 'https://docs.google.com/spreadsheets/d/e/2PACX-abc_DEF/pub?output=csv&gid=123&single=true', kind: 'gsheet-pub' });
+  assert.equal(normalizeBankUrl('https://docs.google.com/spreadsheets/d/e/2PACX-abc/pub?output=csv').url,
+    'https://docs.google.com/spreadsheets/d/e/2PACX-abc/pub?output=csv');
+  assert.deepEqual(normalizeBankUrl('https://docs.google.com/spreadsheets/d/1AbC-xyz/edit#gid=456'),
+    { url: 'https://docs.google.com/spreadsheets/d/1AbC-xyz/export?format=csv&gid=456', kind: 'gsheet-export' });
+  assert.equal(normalizeBankUrl('https://drive.google.com/file/d/FILEID/view?usp=sharing').kind, 'gdrive');
+  assert.equal(normalizeBankUrl('https://github.com/georgekumakuma/utawakuwaku/blob/main/playlists/samples/playlistbank.json').url,
+    'https://raw.githubusercontent.com/georgekumakuma/utawakuwaku/main/playlists/samples/playlistbank.json');
+  assert.equal(normalizeBankUrl('ただの文字'), null);
+  assert.equal(normalizeBankUrl('javascript:alert(1)'), null);
+});
+
+test('共有バンク: 中身の解釈', () => {
+  const bank = parseBankText(JSON.stringify({ name: 'みんなの歌枠', presets: [{ id: 'a', name: 'A', file: 'a.csv' }, { name: 'B', url: 'https://github.com/u/r/blob/main/b.csv' }] }),
+    'https://raw.githubusercontent.com/u/r/main/playlistbank.json');
+  assert.equal(bank.kind, 'bank');
+  assert.equal(bank.name, 'みんなの歌枠');
+  assert.equal(bank.presets[0].url, 'https://raw.githubusercontent.com/u/r/main/a.csv');
+  assert.equal(bank.presets[1].url, 'https://raw.githubusercontent.com/u/r/main/b.csv');
+  const csv = parseBankText('videoId,title,start,end\nuvNqgBWckp4,曲,1:00,2:00', 'https://x');
+  assert.equal(csv.kind, 'csv');
+  assert.equal(csv.songs[0].start, 60);
+  assert.throws(() => parseBankText('<!DOCTYPE html><html>', 'https://x'), /ウェブに公開/);
+  assert.throws(() => parseBankText('a,b\n1,2', 'https://x'), /曲が見つかりません/);
+});
+
+test('スプレッドシート貼り付け用 TSV', () => {
+  const tsv = songsToTSV([normalizeSong({ videoId: 'abc12345678', title: 'タブ\tを含む', start: 1, end: 2, tags: ['a', 'b'] })]);
+  const lines = tsv.split('\n');
+  assert.equal(lines.length, 2);
+  assert.equal(lines[1].split('\t').length, 10);
+  assert.equal(lines[1].split('\t')[1], 'タブ を含む');
+  assert.equal(csvToSongs(tsv.replace(/\t/g, ',')).length, 1);
+});

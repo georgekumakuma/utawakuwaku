@@ -79,7 +79,7 @@ export function newPlaylist(name, songs = [], extra = {}) {
 }
 
 export function emptyData() {
-  return { version: DATA_VERSION, playlists: [], currentId: null };
+  return { version: DATA_VERSION, playlists: [], currentId: null, banks: [] };
 }
 
 // 旧 v2 ストア（{current, lists:{name:[songs]}}）→ v3
@@ -123,6 +123,7 @@ export function sanitizeData(input) {
   data.currentId = data.playlists.some(p => p.id === input.currentId)
     ? input.currentId
     : (data.playlists[0] ? data.playlists[0].id : null);
+  data.banks = sanitizeBanks(input.banks);
   return data;
 }
 
@@ -164,5 +165,32 @@ export function sanitizeSettings(s) {
   if (![0.5, 0.75, 1, 1.25, 1.5, 2].includes(out.rate)) out.rate = 1;
   if (!['off', 'all', 'one'].includes(out.repeat)) out.repeat = 'all';
   if (!['dark', 'light', 'auto'].includes(out.theme)) out.theme = 'dark';
+  return out;
+}
+
+// 共有バンク（他の人が公開した URL）の登録情報
+export function sanitizeBanks(list) {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const b of list) {
+    if (!b || typeof b.url !== 'string' || seen.has(b.url)) continue;
+    seen.add(b.url);
+    out.push({
+      id: String(b.id || newId('b')),
+      url: b.url,
+      name: String(b.name || '共有バンク'),
+      description: String(b.description || ''),
+      icon: String(b.icon || '📚'),
+      author: String(b.author || ''),
+      kind: b.kind === 'bank' ? 'bank' : 'csv',
+      presets: Array.isArray(b.presets) ? b.presets.filter(p => p && p.url).map(p => ({
+        id: String(p.id || p.url), name: String(p.name || ''), description: String(p.description || ''), icon: String(p.icon || '🎵'), url: String(p.url)
+      })) : [],
+      count: Number(b.count) || 0,
+      addedAt: Number(b.addedAt) || Date.now(),
+      fetchedAt: Number(b.fetchedAt) || 0
+    });
+  }
   return out;
 }

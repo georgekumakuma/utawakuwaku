@@ -5,7 +5,7 @@
 import * as storage from './storage.js';
 import {
   emptyData, sanitizeData, sanitizeSettings, migrateV1, migrateV2, newPlaylist, normalizeSong,
-  uniqueName, DEFAULT_SETTINGS
+  uniqueName, DEFAULT_SETTINGS, sanitizeBanks
 } from './model.js';
 import { csvToSongs } from './csv.js';
 
@@ -312,9 +312,47 @@ export function importJSON(text, mode = 'merge') {
       state.data.playlists.push(p);
     }
     state.data.currentId = incoming.playlists[0].id;
+    for (const b of incoming.banks || []) if (!bankByUrl(b.url)) banks().push(b);
   }
   if (obj.settings) state.settings = sanitizeSettings({ ...state.settings, ...obj.settings });
   state.ui.selection.clear();
   commit('data', 'settings', 'ui');
   return incoming.playlists.length;
+}
+
+// ===== 共有バンク =====
+export function banks() { return state.data.banks || (state.data.banks = []); }
+export function bankById(id) { return banks().find(b => b.id === id) || null; }
+export function bankByUrl(url) { return banks().find(b => b.url === url) || null; }
+
+export function saveBank(info) {
+  const list = banks();
+  const existing = list.find(b => b.url === info.url);
+  if (existing) { Object.assign(existing, info, { id: existing.id, addedAt: existing.addedAt }); commit('data'); return existing; }
+  const [b] = sanitizeBanks([{ ...info, addedAt: Date.now() }]);
+  list.unshift(b);
+  commit('data');
+  return b;
+}
+
+export function removeBank(id) {
+  const list = banks();
+  const i = list.findIndex(b => b.id === id);
+  if (i < 0) return null;
+  const [removed] = list.splice(i, 1);
+  commit('data');
+  return { removed, index: i };
+}
+
+export function restoreBank(b, index) {
+  banks().splice(Math.min(index, banks().length), 0, b);
+  commit('data');
+}
+
+export function replaceSongs(playlistId, songs) {
+  const pl = playlistById(playlistId);
+  if (!pl) return null;
+  pl.songs = songs.map(s => normalizeSong({ ...s, id: undefined })).filter(Boolean);
+  commit('data');
+  return pl;
 }

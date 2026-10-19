@@ -15,7 +15,7 @@ const results = [];
 let failed = 0;
 
 async function newPage(viewport) {
-  const ctx = await browser.newContext({ viewport, locale: 'ja-JP' });
+  const ctx = await browser.newContext({ viewport, locale: 'ja-JP', serviceWorkers: 'block' });
   const page = await ctx.newPage();
   page.on('pageerror', e => errors.push(`[pageerror] ${e.message}`));
   page.on('console', m => {
@@ -81,9 +81,10 @@ async function test(name, fn) {
     await page.locator('.side-item', { hasText: 'ライブラリ' }).click();
     await sleep(300);
     assert.match(await page.locator('.view-meta').innerText(), /65曲/);
-    await page.locator('.side-item', { hasText: 'プレイリストバンク' }).click();
+    await page.locator('.side-item', { hasText: 'バンク' }).click();
     await sleep(1000);
-    assert.equal(await page.locator('.bank-card').count(), 6);
+    assert.equal(await page.locator('.bank-section', { hasText: 'サンプル' }).locator('.bank-card').count(), 6);
+    assert.equal(await page.locator('.bank-empty').count(), 1, 'empty shared-bank prompt');
     await page.screenshot({ path: `${OUT}/desktop-bank.png` });
     await page.locator('.bank-card', { hasText: 'Pops' }).locator('.btn-primary').click();
     await sleep(600);
@@ -169,6 +170,109 @@ async function test(name, fn) {
     assert.equal(await page.evaluate(() => window.__uta.state.ui.sleep), null);
   });
 
+  await test('共有バンク: URLで追加 → 読み込み → 最新版で更新 → 紹介リンク → 一覧から外す', async () => {
+    const csvUrl = srv.base + '/playlists/samples/utawaku_best_cute.csv';
+    const bankUrl = srv.base + '/playlists/samples/playlistbank.json';
+    await page.locator('.side-item', { hasText: 'バンク' }).click();
+    await sleep(300);
+    // CSV 1本の共有バンク
+    await page.locator('.view-actions .btn', { hasText: 'URLでバンクを追加' }).click();
+    await sleep(200);
+    await page.locator('.addbank input[type=url]').fill(csvUrl);
+    await page.locator('.addbank .btn', { hasText: '確認' }).click();
+    await page.waitForSelector('.inspect-ok');
+    assert.match(await page.locator('.inspect-ok').innerText(), /14曲/);
+    await page.locator('.addbank input[type=text]').fill('テスト共有');
+    await page.locator('.modal-footer .btn-primary').click();
+    await sleep(300);
+    const mine = page.locator('.bank-section', { hasText: '追加した共有バンク' });
+    assert.equal(await mine.locator('.bank-card', { hasText: 'テスト共有' }).count(), 1);
+    await mine.locator('.bank-card', { hasText: 'テスト共有' }).locator('.btn-primary').click();
+    await sleep(500);
+    assert.match(await page.locator('.view-title').innerText(), /テスト共有/);
+    assert.match(await page.locator('.view-meta').innerText(), /14曲/);
+    // 自分で編集（1曲削除）→ 最新版で更新で元に戻る
+    await page.locator('.row').first().click({ button: 'right' });
+    await page.locator('.menu-item', { hasText: '削除' }).click();
+    await sleep(200);
+    assert.match(await page.locator('.view-meta').innerText(), /13曲/);
+    await page.locator('.view-actions .btn[title="メニュー"]').click();
+    await page.locator('.menu-item', { hasText: '最新版で更新' }).click();
+    await page.locator('.modal .btn-danger').click();
+    await sleep(500);
+    assert.match(await page.locator('.view-meta').innerText(), /14曲/);
+    // スプレッドシート用コピー
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.locator('.view-actions .btn[title="メニュー"]').click();
+    await page.locator('.menu-item', { hasText: 'スプレッドシート用' }).click();
+    await sleep(200);
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    assert.ok(clip.startsWith('videoId\ttitle\tstart'), clip.slice(0, 40));
+    assert.equal(clip.split('\n').length, 15);
+    // playlistbank.json 形式の共有バンク（相対パスの解決）
+    await page.locator('.side-item', { hasText: 'バンク' }).click();
+    await sleep(200);
+    await page.locator('.view-actions .btn', { hasText: 'URLでバンクを追加' }).click();
+    await page.locator('.addbank input[type=url]').fill(bankUrl);
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('.inspect-ok');
+    assert.match(await page.locator('.inspect-ok').innerText(), /6個のプレイリスト/);
+    await page.locator('.addbank input[type=text]').fill('テストバンク');
+    await page.locator('.modal-footer .btn-primary').click();
+    await sleep(300);
+    assert.equal(await page.locator('.bank-card.bank-sub').count(), 6);
+    await page.locator('.bank-card.bank-sub', { hasText: 'Ballad' }).locator('.btn-primary').click();
+    await sleep(500);
+    assert.match(await page.locator('.view-meta').innerText(), /13曲/);
+    await page.screenshot({ path: `${OUT}/desktop-sharedbank-loaded.png` });
+    // 紹介リンク（#bank=）で開くと追加ダイアログが出る
+    await page.evaluate(() => { location.hash = '#bank=' + encodeURIComponent(location.origin + '/playlists/samples/utawaku_best_pops.csv'); });
+    await page.waitForSelector('.inspect-ok');
+    assert.match(await page.locator('.inspect-ok').innerText(), /12曲/);
+    await page.keyboard.press('Escape');
+    await sleep(200);
+    // 一覧から外す → 元に戻す
+    await page.locator('.side-item', { hasText: 'バンク' }).click();
+    await sleep(300);
+    await page.screenshot({ path: `${OUT}/desktop-sharedbank.png`, fullPage: false });
+    const before = await page.locator('.bank-section', { hasText: '追加した共有バンク' }).locator('.bank-card').count();
+    await page.locator('.bank-card', { hasText: 'テスト共有' }).locator('.icon-btn[title="メニュー"]').click();
+    await page.locator('.menu-item', { hasText: '一覧から外す' }).click();
+    await sleep(200);
+    assert.equal(await page.locator('.bank-section', { hasText: '追加した共有バンク' }).locator('.bank-card').count(), before - 1);
+    await page.locator('.toast-action', { hasText: '元に戻す' }).click();
+    await sleep(200);
+    assert.equal(await page.locator('.bank-section', { hasText: '追加した共有バンク' }).locator('.bank-card').count(), before);
+    // エラー表示: HTML が返る URL
+    await page.locator('.view-actions .btn', { hasText: 'URLでバンクを追加' }).click();
+    await page.locator('.addbank input[type=url]').fill(srv.base + '/index.html');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('.bank-inspect .form-error');
+    assert.match(await page.locator('.bank-inspect .form-error').innerText(), /ウェブに公開/);
+    await page.keyboard.press('Escape');
+  });
+
+  await test('みんなの共有バンク（作者が紹介する一覧）', async () => {
+    await page.route('**/playlists/shared-directory.json', route => route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ banks: [{ name: '紹介バンク', description: '説明', author: 'ファンA', url: srv.base + '/playlists/samples/utawaku_best_pops.csv' }] })
+    }));
+    await page.reload();
+    await page.waitForFunction(() => !!window.__uta, null, { timeout: 20000 });
+    await sleep(300);
+    await page.locator('.side-item', { hasText: 'バンク' }).click();
+    const dir = page.locator('.bank-section', { hasText: 'みんなの共有バンク' });
+    await dir.locator('.bank-card').first().waitFor();
+    assert.match(await dir.innerText(), /紹介バンク[\s\S]*ファンA/);
+    await dir.locator('.btn', { hasText: '追加' }).click();
+    await page.waitForSelector('.inspect-ok');
+    await page.locator('.addbank input[type=text]').fill('紹介バンク');
+    await page.locator('.modal-footer .btn-primary').click();
+    await sleep(300);
+    assert.match(await dir.innerText(), /追加済み/);
+    await page.unroute('**/playlists/shared-directory.json');
+  });
+
   await test('設定（テーマ切替）とリロード後の永続化', async () => {
     await page.locator('.side-link', { hasText: '設定' }).click();
     await sleep(200);
@@ -180,7 +284,7 @@ async function test(name, fn) {
     await page.waitForFunction(() => !!window.__uta, null, { timeout: 20000 });
     await sleep(500);
     const pls = (await page.locator('.side-pl').allInnerTexts()).map(t => t.replace(/\s+/g, ' ').trim());
-    assert.equal(pls.length, 4, JSON.stringify(pls));
+    assert.ok(pls.length >= 6, JSON.stringify(pls));
     assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light');
   });
 

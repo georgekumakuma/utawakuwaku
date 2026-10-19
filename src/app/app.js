@@ -23,6 +23,7 @@ import { hasValidEnd } from '../core/model.js';
 import { listBankPresets } from './bank.js';
 import * as wakelock from './wakelock.js';
 import { openAddModal } from '../ui/addmodal.js';
+import { openAddBankDialog } from '../ui/sharedbank.js';
 
 function $(id) { return document.getElementById(id); }
 
@@ -64,6 +65,14 @@ function installMediaSessionHandlers(engine) {
 }
 
 async function importFromHash() {
+  if (location.hash.startsWith('#bank=')) {
+    // 共有バンクの紹介リンク: 中身を確認してから追加するダイアログを開く
+    const url = decodeURIComponent(location.hash.slice(6));
+    history.replaceState(null, '', location.pathname + location.search);
+    store.setView('bank');
+    openAddBankDialog(url);
+    return true;
+  }
   if (!location.hash || !/^#pl2?u?=/.test(location.hash)) return false;
   const hash = location.hash;
   history.replaceState(null, '', location.pathname + location.search);
@@ -84,7 +93,7 @@ function showWelcome() {
     h('div.welcome-grid',
       h('div.welcome-card', icon('video'), h('b', 'URLを貼る'), h('span', 'プレイヤーを見ながら I / O キーで開始・終了を打刻')),
       h('div.welcome-card', icon('text'), h('b', 'セットリストを貼る'), h('span', '「1:23:45 曲名」形式のコメントを貼るだけで全曲を一括登録')),
-      h('div.welcome-card', icon('bank'), h('b', 'バンクから選ぶ'), h('span', '同梱プリセットを読み込んで、すぐに聴き始める'))
+      h('div.welcome-card', icon('bank'), h('b', 'バンクから選ぶ'), h('span', 'サンプルや、ファンの方が公開した共有バンクを読み込んで、すぐに聴き始める'))
     ),
     h('p.hint', 'データはこのブラウザの中にだけ保存されます。設定 → バックアップで JSON に保存できます。')
   );

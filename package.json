@@ -1,6 +1,6 @@
 {
   "name": "utawakuwaku",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "YouTube区間再生・プレイリスト管理ツール（歌枠プレイヤー）",
   "main": "main-electron.js",
   "scripts": {
