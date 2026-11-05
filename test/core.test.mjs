@@ -361,3 +361,41 @@ test('貼り付けの判定', () => {
   assert.equal(classifyText('見て！ https://www.youtube.com/watch?v=uvNqgBWckp4 最高').kind, 'url', '文中の URL');
   assert.equal(tsvToCsv('a\tb"c'), 'a,"b""c"');
 });
+
+import { pickTrack, estimateEnd, searchTerm, cacheKey } from '../src/core/tracklen.js';
+
+test('原曲の長さ: 検索結果から合う曲を選ぶ', () => {
+  const res = [
+    { kind: 'song', trackName: '夜に駆ける (TV Size)', artistName: 'YOASOBI', trackTimeMillis: 89000 },
+    { kind: 'song', trackName: '夜に駆ける', artistName: '別の歌手', trackTimeMillis: 250000 },
+    { kind: 'song', trackName: '夜に駆ける', artistName: 'YOASOBI', trackTimeMillis: 261000 },
+    { kind: 'song', trackName: '夜に駆ける (Instrumental)', artistName: 'YOASOBI', trackTimeMillis: 261500 },
+    { kind: 'music-video', trackName: '夜に駆ける', artistName: 'YOASOBI', trackTimeMillis: 270000 }
+  ];
+  const p = pickTrack(res, { title: '夜に駆ける', artist: 'YOASOBI' });
+  assert.equal(p.seconds, 261);
+  assert.equal(p.artistName, 'YOASOBI');
+  assert.equal(pickTrack(res, { title: '夜に駆ける' }).seconds, 250, 'アーティスト不明なら原題一致の先頭（TVサイズ・インストは除外）');
+  assert.equal(pickTrack(res, { title: '夜に駆ける (TV Size)', artist: 'YOASOBI' }).seconds, 89, '曲名にTVサイズとあれば選べる');
+  assert.equal(pickTrack(res, { title: 'まったく別の曲' }), null);
+  assert.equal(pickTrack([], { title: 'x' }), null);
+});
+
+test('原曲の長さ: 終わりの推定は短くする方向だけ', () => {
+  // 開始 100、次の曲が 400 から。原曲 240 秒 + 余韻 5 → 345 で終了（55秒カット）
+  assert.deepEqual(estimateEnd({ start: 100, end: 400, duration: 240, tail: 5 }), { end: 345, cut: 55 });
+  // 曲間がほぼない → 変更なし
+  assert.equal(estimateEnd({ start: 100, end: 346, duration: 240, tail: 5 }), null);
+  // 区間が原曲より明らかに短い（TVサイズで歌った等）→ 変更なし
+  assert.equal(estimateEnd({ start: 100, end: 220, duration: 240 }), null);
+  // 終わり不明（最後の曲）→ 推定値を入れる
+  assert.deepEqual(estimateEnd({ start: 100, end: 0, duration: 240, tail: 3 }), { end: 343, cut: null });
+  // 短すぎる「原曲」（効果音など）は使わない
+  assert.equal(estimateEnd({ start: 0, end: 300, duration: 20 }), null);
+});
+
+test('原曲の長さ: 検索語とキャッシュキー', () => {
+  assert.equal(searchTerm({ title: '夜に駆ける (cover)', artist: 'YOASOBI' }), '夜に駆ける YOASOBI');
+  assert.equal(searchTerm({ title: '【歌ってみた】' }), '【歌ってみた】');
+  assert.equal(cacheKey({ title: '夜に駆ける（cover）', artist: 'Ｙｏａｓｏｂｉ' }), cacheKey({ title: '夜に駆ける', artist: 'yoasobi' }));
+});

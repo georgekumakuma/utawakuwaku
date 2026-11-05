@@ -159,7 +159,9 @@ export const DEFAULT_SETTINGS = {
   quizCount: 10,
   quizSeconds: 5,
   quizFrom: 'start',      // 'start' | 'random'
-  seenV3: false           // v3 の新機能案内を見たか
+  seenV3: false,          // v3 の新機能案内を見たか
+  trimGaps: true,         // セットリスト取り込み時に原曲の長さで曲間をカット
+  trimTail: 5             // 原曲の長さに足す余韻（秒）
 };
 
 export function sanitizeSettings(s) {
@@ -176,6 +178,7 @@ export function sanitizeSettings(s) {
   if (![5, 10, 20].includes(out.quizCount)) out.quizCount = 10;
   if (![3, 5, 10].includes(out.quizSeconds)) out.quizSeconds = 5;
   if (!['start', 'random'].includes(out.quizFrom)) out.quizFrom = 'start';
+  out.trimTail = Math.min(20, Math.max(0, Math.round(Number(out.trimTail) || 0)));
   return out;
 }
 

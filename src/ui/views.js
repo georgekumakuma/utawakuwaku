@@ -177,6 +177,7 @@ export function mountViews(root) {
       { label: 'CSVをクリップボードにコピー', icon: 'file', onClick: () => actions.copyCSV(pl.id) },
       { label: 'セットリスト（タイムスタンプ）をコピー', icon: 'text', onClick: () => actions.copySetlist(pl.id) },
       { label: 'スプレッドシート用にコピー（公開用）', icon: 'layers', onClick: () => copyForSpreadsheet(pl) },
+      { label: '曲間を詰める（原曲の長さで推定）', icon: 'scissors', onClick: () => import('./trim.js').then(m => m.openTrimDialog(pl.id)) },
       sourceOf(pl) ? 'sep' : null,
       sourceOf(pl) ? { label: `最新版で更新（${sourceOf(pl).label}）`, icon: 'download', onClick: () => refreshFromSource(pl) } : null,
       'sep',

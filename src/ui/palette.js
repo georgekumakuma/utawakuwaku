@@ -32,6 +32,7 @@ function commands() {
     cur ? { label: `「${cur.name}」の共有URLをコピー`, icon: 'share', run: () => actions.sharePlaylist(cur.id) } : null,
     cur ? { label: `「${cur.name}」をCSVで書き出し`, icon: 'download', run: () => actions.exportCSV(cur.id) } : null,
     cur ? { label: `「${cur.name}」のセットリストをコピー`, icon: 'text', run: () => actions.copySetlist(cur.id) } : null,
+    cur ? { label: `「${cur.name}」の曲間を詰める（原曲の長さで推定）`, icon: 'scissors', run: () => import('./trim.js').then(m => m.openTrimDialog(cur.id)), kw: 'trim gap カット 無音' } : null,
     { label: 'すべてをJSONでバックアップ', icon: 'download', run: () => actions.exportAllJSON() },
     'sep',
     { label: 'ライブラリを開く', icon: 'library', run: () => store.setView('library') },

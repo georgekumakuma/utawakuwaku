@@ -11,6 +11,7 @@ import { parseYouTubeInput, isValidVideoId, thumbUrl } from '../core/ytid.js';
 import { normalizeSong, hasValidEnd } from '../core/model.js';
 import { fetchVideoInfo } from '../player/yt.js';
 import { suggestTags } from '../core/insights.js';
+import { estimateOne } from './trim.js';
 import { toast, toastError, toastSuccess } from './toast.js';
 import { confirmDialog } from './dialog.js';
 
@@ -59,7 +60,8 @@ export function mountEditor(root) {
     h('div.time-actions',
       h('button.btn.btn-ghost.sm', { type: 'button', title: '再生中の位置を終了にする (O)', onclick: () => markFromPlayer('end') }, icon('flag'), ' 現在位置'),
       h('button.btn.btn-ghost.sm', { type: 'button', title: '終了の手前4秒を試聴', onclick: () => previewEnd() }, icon('play'), ' 終わりを試聴'),
-      h('button.btn.btn-ghost.sm', { type: 'button', title: '動画の最後まで再生する', onclick: () => { setField('end', 0); } }, '最後まで'))
+      h('button.btn.btn-ghost.sm', { type: 'button', title: '動画の最後まで再生する', onclick: () => { setField('end', 0); } }, '最後まで'),
+      h('button.btn.btn-ghost.sm', { type: 'button', title: '曲名とアーティストから原曲の長さを調べ、曲のあとのトークや無音をカット', onclick: (ev) => estimateFromOriginal(ev.currentTarget) }, icon('scissors'), ' 原曲の長さで'))
   );
 
   const titleInput = h('input.input', { type: 'text', placeholder: '曲名 / シーン名（必須）' });
@@ -183,6 +185,18 @@ export function mountEditor(root) {
     dirty = true;
     renderTimes();
     void fromInput;
+  }
+
+  async function estimateFromOriginal(btn) {
+    if (!draft || !draft.title.trim()) { toast('先に曲名を入力してください'); return; }
+    btn.disabled = true;
+    try {
+      const r = await estimateOne({ ...draft, end: hasValidEnd(draft) ? draft.end : 0 });
+      if (!r) return;
+      setField('end', r.end);
+      toast(`原曲「${r.info.trackName}」（${formatTime(r.info.seconds)}）から、終わりを ${formatTime(r.end)} にしました${r.est.cut ? `（${formatTime(r.est.cut)} カット）` : ''}`, { duration: 4000 });
+      if (sameVideoLoaded()) previewEnd();
+    } finally { btn.disabled = false; }
   }
 
   function nudge(key, delta) {

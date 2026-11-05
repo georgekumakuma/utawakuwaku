@@ -12,6 +12,9 @@ import { csvToSongs } from '../core/csv.js';
 import { formatTime } from '../core/time.js';
 import { normalizeSong } from '../core/model.js';
 import { fetchVideoInfo } from '../player/yt.js';
+import { estimateEnd } from '../core/tracklen.js';
+import { lookupMany } from '../app/tracklookup.js';
+import { estimateBadge, TRIM_NOTE } from './trim.js';
 import { toast, toastError } from './toast.js';
 
 const SETLIST_SAMPLE = `例（YouTubeのコメント・概要欄からそのまま貼り付け）:
@@ -98,7 +101,49 @@ export function openAddModal(initialTab = 'url', prefill = {}) {
     const summary = h('span.setlist-summary');
     const btnCurrent = h('button.btn.btn-ghost', { type: 'button', disabled: true, onclick: () => doImport('current') }, icon('plus'), ' 現在のリストに追加');
     const btnNew = h('button.btn.btn-primary', { type: 'button', disabled: true, onclick: () => doImport('new') }, icon('library'), ' 新しいプレイリストにする');
-    const pv = videoPreview((cur) => { v = cur; reparse(); });
+    const pv = videoPreview((cur) => { v = cur; if (parsed.length) updateSummary(); });
+
+    // 曲間カット（原曲の長さで終わりを推定）
+    const trimCb = h('input', { type: 'checkbox', checked: state.settings.trimGaps });
+    const tailIn = h('input.input.xs', { type: 'number', min: 0, max: 20, step: 1, value: state.settings.trimTail, title: '原曲の長さに足す余韻（秒）' });
+    const trimStatus = h('span.trim-status');
+    let trimToken = 0;
+    const rowRefs = [];
+    function applyEstimate(i) {
+      const it = parsed[i]; const ref = rowRefs[i];
+      if (!it || !ref) return;
+      it.est = (state.settings.trimGaps && it.info && it.info.seconds)
+        ? estimateEnd({ start: it.start, end: it.end || 0, duration: it.info.seconds, tail: state.settings.trimTail })
+        : null;
+      const end = it.est ? it.est.end : it.end;
+      ref.end.textContent = end ? formatTime(end) : '最後';
+      ref.end.classList.toggle('trimmed', !!it.est);
+      ref.est.replaceChildren(state.settings.trimGaps ? estimateBadge(it.info, it.est) : '');
+    }
+    function trimSummary() {
+      if (!state.settings.trimGaps) { trimStatus.textContent = ''; return; }
+      const done = parsed.filter(it => it.info).length;
+      if (done < parsed.length) { trimStatus.textContent = `原曲の長さを調べています ${done} / ${parsed.length}`; return; }
+      const est = parsed.filter(it => it.est);
+      const cut = est.reduce((a, it) => a + (it.est.cut || 0), 0);
+      trimStatus.textContent = `${est.length}曲の終わりを推定${cut ? `（合計 ${formatTime(cut)} カット）` : ''}`;
+    }
+    function runTrim() {
+      const token = ++trimToken;
+      parsed.forEach((_, i) => applyEstimate(i));
+      trimSummary();
+      if (!state.settings.trimGaps || !parsed.length) return;
+      const targets = parsed.map(it => (it.info ? null : { title: it.title, artist: it.artist }));
+      lookupMany(targets.map(t => t || { title: '' }), {
+        isCancelled: () => token !== trimToken,
+        onResult: (i, info) => { if (!targets[i]) return; parsed[i].info = info; applyEstimate(i); trimSummary(); }
+      });
+    }
+    trimCb.addEventListener('change', () => { store.setSetting('trimGaps', trimCb.checked); runTrim(); });
+    tailIn.addEventListener('change', () => {
+      store.setSetting('trimTail', Math.min(20, Math.max(0, parseInt(tailIn.value, 10) || 0)));
+      parsed.forEach((_, i) => applyEstimate(i)); trimSummary();
+    });
 
     function reparse() {
       parsed = parseSetlist(ta.value, { gap: parseFloat(gap.value) || 0 });
@@ -108,18 +153,25 @@ export function openAddModal(initialTab = 'url', prefill = {}) {
         btnCurrent.disabled = btnNew.disabled = true;
         return;
       }
+      rowRefs.length = 0;
       const table = h('table.setlist-table',
-        h('thead', h('tr', h('th', ''), h('th', '開始'), h('th', '終了'), h('th', '曲名'), h('th', 'アーティスト'))),
+        h('thead', h('tr', h('th', ''), h('th', '開始'), h('th', '終了'), h('th', '曲名'), h('th', 'アーティスト'), h('th', ''))),
         h('tbody', ...parsed.map((it, i) => {
           it.use = true;
           const cb = h('input', { type: 'checkbox', checked: true, onchange: (e) => { it.use = e.target.checked; updateSummary(); } });
-          const t = h('input.input.xs', { type: 'text', value: it.title, oninput: (e) => { it.title = e.target.value; } });
-          const a = h('input.input.xs', { type: 'text', value: it.artist, oninput: (e) => { it.artist = e.target.value; } });
-          return h('tr', h('td', cb), h('td.mono', formatTime(it.start)), h('td.mono', it.end ? formatTime(it.end) : '最後'), h('td', t), h('td', a));
+          // 曲名・アーティストを直したら、その曲だけ調べ直す
+          const relook = () => { it.info = null; applyEstimate(i); if (state.settings.trimGaps) runTrim(); };
+          const t = h('input.input.xs', { type: 'text', value: it.title, oninput: (e) => { it.title = e.target.value; }, onchange: relook });
+          const a = h('input.input.xs', { type: 'text', value: it.artist, oninput: (e) => { it.artist = e.target.value; }, onchange: relook });
+          const endCell = h('td.mono', it.end ? formatTime(it.end) : '最後');
+          const estCell = h('td.trim-cell');
+          rowRefs[i] = { end: endCell, est: estCell };
+          return h('tr', h('td', cb), h('td.mono', formatTime(it.start)), endCell, h('td', t), h('td', a), estCell);
         }))
       );
       preview.appendChild(table);
       updateSummary();
+      runTrim();
     }
     function updateSummary() {
       const n = parsed.filter(it => it.use).length;
@@ -130,7 +182,7 @@ export function openAddModal(initialTab = 'url', prefill = {}) {
     function doImport(mode) {
       if (!v) return;
       const songs = parsed.filter(it => it.use).map(it => normalizeSong({
-        videoId: v.videoId, title: it.title, artist: it.artist, start: it.start, end: it.end, rating: 3, article: v.title, singer: v.author
+        videoId: v.videoId, title: it.title, artist: it.artist, start: it.start, end: it.est ? it.est.end : it.end, rating: 3, article: v.title, singer: v.author
       }));
       try {
         actions.importSongs(songs, { mode, name: v.title || 'セットリスト' });
@@ -143,6 +195,10 @@ export function openAddModal(initialTab = 'url', prefill = {}) {
       pv.el,
       h('div.field', h('label', 'セットリスト（タイムスタンプ付きテキスト）'), ta),
       h('div.field-row.setlist-opts', h('label', '曲の終わりを次の曲の '), gap, h('span', ' 秒前にする'), summary),
+      h('div.field-row.setlist-opts.trim-opts',
+        h('label.check', trimCb, h('span', h('b', '曲間をカット'), '（原曲の長さで終わりを推定）')),
+        h('span', '余韻'), tailIn, h('span', '秒'), trimStatus,
+        h('span.info-tip', { tabindex: 0, title: TRIM_NOTE }, icon('info'))),
       preview,
       h('div.btn-row', btnNew, btnCurrent)
     );
