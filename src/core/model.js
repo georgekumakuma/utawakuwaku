@@ -161,7 +161,8 @@ export const DEFAULT_SETTINGS = {
   quizFrom: 'start',      // 'start' | 'random'
   seenV3: false,          // v3 の新機能案内を見たか
   trimGaps: true,         // セットリスト取り込み時に原曲の長さで曲間をカット
-  trimTail: 5             // 原曲の長さに足す余韻（秒）
+  trimTail: 5,            // 原曲の長さに足す余韻（秒）
+  ytApiKey: ''            // 個人の YouTube Data API キー（空ならアプリのキーを使う。バックアップには含めない）
 };
 
 export function sanitizeSettings(s) {

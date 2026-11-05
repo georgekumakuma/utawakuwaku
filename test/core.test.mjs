@@ -399,3 +399,46 @@ test('原曲の長さ: 検索語とキャッシュキー', () => {
   assert.equal(searchTerm({ title: '【歌ってみた】' }), '【歌ってみた】');
   assert.equal(cacheKey({ title: '夜に駆ける（cover）', artist: 'Ｙｏａｓｏｂｉ' }), cacheKey({ title: '夜に駆ける', artist: 'yoasobi' }));
 });
+
+import { parseIsoDuration, findSetlists, isLikelyNonSong, songCount } from '../src/core/setlistfind.js';
+
+test('セトリ探し: 動画の長さ・曲ではないチャプター', () => {
+  assert.equal(parseIsoDuration('PT1H2M3S'), 3723);
+  assert.equal(parseIsoDuration('PT45M'), 2700);
+  assert.equal(parseIsoDuration('PT59S'), 59);
+  assert.equal(parseIsoDuration('P1DT1S'), 86401);
+  assert.equal(parseIsoDuration('nope'), 0);
+  for (const t of ['待機', '待機画面', 'オープニング', 'Opening トーク', 'スパチャ読み', 'エンディング', '雑談', 'お知らせ']) assert.equal(isLikelyNonSong(t), true, t);
+  for (const t of ['夜に駆ける', 'ドライフラワー', '待機中に流れる曲 / 誰か', 'トーキョーゲットー']) assert.equal(isLikelyNonSong(t), false, t);
+});
+
+test('セトリ探し: 概要欄とコメントから候補を作る', () => {
+  const description = '今日も来てくれてありがとう！\n0:00 待機\n3:10 オープニング\n10:00 夜に駆ける / YOASOBI\n15:00 ドライフラワー / 優里\n20:30 エンディング';
+  const comments = [
+    { text: 'かわいい！', author: 'a', likes: 999 },
+    { text: 'セトリ\n10:00 夜に駆ける\n15:00 ドライフラワー\n20:00 残酷な天使のテーゼ\n25:00 千本桜', author: 'セトリ職人', likes: 40 },
+    { text: '10:00 夜に駆ける\n15:00 ドライフラワー\n20:00 残酷な天使のテーゼ\n25:00 千本桜', author: 'コピペ', likes: 2 },
+    { text: '1:00 ここ好き', author: 'b', likes: 10 }
+  ];
+  const c = findSetlists({ description, comments, duration: 1800 });
+  assert.equal(c.length, 2, '同じ内容のコメントは1つにまとめ、タイムスタンプが少ないものは除外');
+  assert.equal(c[0].source, 'description');
+  assert.equal(c[0].items.length, 5);
+  assert.equal(songCount(c[0].items), 2);
+  assert.equal(c[1].author, 'セトリ職人');
+  assert.equal(c[1].items[3].end, 1800, '最後の曲は動画の長さまで');
+  assert.equal(findSetlists({ description: 'タイムスタンプなし', comments: [] }).length, 0);
+});
+
+test('JSON バックアップ: 共有バンク・動画情報を含み、API キーは含めない', async () => {
+  const store = await import('../src/core/store.js');
+  store.state.data.playlists = [];
+  store.state.data.banks = [{ id: 'b1', url: 'https://example.com/a.csv', name: 'A', kind: 'csv', presets: [] }];
+  store.state.data.videos = { abc12345678: { duration: 3600 } };
+  store.state.settings = { ...store.state.settings, ytApiKey: 'SECRET' };
+  const json = JSON.parse(store.exportJSON());
+  assert.equal(json.banks.length, 1);
+  assert.equal(json.videos.abc12345678.duration, 3600);
+  assert.equal('ytApiKey' in json.settings, false);
+  assert.ok(!JSON.stringify(json).includes('SECRET'));
+});

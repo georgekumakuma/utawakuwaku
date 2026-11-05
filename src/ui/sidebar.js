@@ -22,7 +22,8 @@ export function mountSidebar(root) {
     plList,
     h('div.side-footer',
       h('button.side-link', { type: 'button', onclick: () => openSettings() }, icon('settings'), ' 設定'),
-      h('button.side-link', { type: 'button', onclick: () => openHelp() }, icon('keyboard'), ' ショートカット')
+      h('button.side-link', { type: 'button', onclick: () => openHelp() }, icon('keyboard'), ' ショートカット'),
+      h('button.side-link.side-link-sm', { type: 'button', onclick: () => import('./privacy.js').then(m => m.openPrivacy()) }, icon('info'), ' プライバシーと利用規約')
     )
   );
 

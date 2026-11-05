@@ -302,8 +302,16 @@ export function setSetting(key, value) {
 export function exportJSON() {
   return JSON.stringify({
     app: 'utawakuwaku', version: state.data.version, exportedAt: new Date().toISOString(),
-    playlists: state.data.playlists, settings: state.settings
+    playlists: state.data.playlists, banks: state.data.banks || [], videos: state.data.videos || {},
+    settings: withoutSecrets(state.settings)
   }, null, 2);
+}
+
+// バックアップに個人の API キーを含めない（ファイルを人に渡しても漏れないように）
+function withoutSecrets(settings) {
+  const rest = { ...(settings || {}) };
+  delete rest.ytApiKey;
+  return rest;
 }
 
 // JSON バックアップの取り込み。mode: 'merge'（追加）| 'replace'（置き換え）
@@ -321,8 +329,9 @@ export function importJSON(text, mode = 'merge') {
     }
     state.data.currentId = incoming.playlists[0].id;
     for (const b of incoming.banks || []) if (!bankByUrl(b.url)) banks().push(b);
+    state.data.videos = { ...(incoming.videos || {}), ...(state.data.videos || {}) };
   }
-  if (obj.settings) state.settings = sanitizeSettings({ ...state.settings, ...obj.settings });
+  if (obj.settings) state.settings = sanitizeSettings({ ...state.settings, ...withoutSecrets(obj.settings), ytApiKey: state.settings.ytApiKey });
   state.ui.selection.clear();
   commit('data', 'settings', 'ui');
   return incoming.playlists.length;

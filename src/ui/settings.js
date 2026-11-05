@@ -8,8 +8,10 @@ import * as actions from '../app/actions.js';
 import { ctx } from '../app/context.js';
 import { ACCENTS } from './theme.js';
 import { refreshColors } from './ambient.js';
-import { toastSuccess } from './toast.js';
+import { toast, toastError, toastSuccess } from './toast.js';
 import { setWakeLockWanted } from '../app/wakelock.js';
+import { personalKey, usingAppKey, fetchVideoMeta } from '../app/ytapi.js';
+import { openPrivacy } from './privacy.js';
 
 function row(label, control, desc) {
   return h('div.setting-row', h('div.setting-text', h('div.setting-label', label), desc ? h('div.setting-desc', desc) : null), h('div.setting-control', control));
@@ -19,6 +21,29 @@ function toggle(key, onChange) {
   const input = h('input', { type: 'checkbox', checked: !!state.settings[key] });
   input.addEventListener('change', () => { store.setSetting(key, input.checked); onChange && onChange(input.checked); });
   return h('label.switch', input, h('span.switch-track'));
+}
+
+function ytKeyStatus() {
+  if (personalKey()) return '個人のキーを使用中';
+  if (usingAppKey()) return 'アプリに設定されたキーを使用中（個人のキーは不要です）';
+  return '未設定です。設定しなくても、概要欄をコピーして貼り付ければ取り込めます';
+}
+
+function ytKeyControl() {
+  const input = h('input.input.sm-input', { type: 'password', placeholder: personalKey() ? '' : (usingAppKey() ? '（任意）個人のキー' : 'AIza…'), value: personalKey(), autocomplete: 'off', spellcheck: false, 'aria-label': 'YouTube Data API キー' });
+  input.addEventListener('change', () => { store.setSetting('ytApiKey', input.value.trim()); toast(input.value.trim() ? 'APIキーを保存しました' : '個人のキーを削除しました', { duration: 1800 }); });
+  const show = h('button.btn.btn-ghost.sm', { type: 'button', onclick: () => { input.type = input.type === 'password' ? 'text' : 'password'; } }, '表示');
+  const testBtn = h('button.btn.btn-ghost.sm', { type: 'button', onclick: async () => {
+    store.setSetting('ytApiKey', input.value.trim());
+    testBtn.disabled = true;
+    try {
+      const first = store.librarySongs()[0];
+      const meta = await fetchVideoMeta(first ? first.song.videoId : 'jNQXAC9IVRw');
+      toast(`接続できました（「${meta.title}」の情報を取得）`, { duration: 3000 });
+    } catch (e) { toastError(e.message); }
+    finally { testBtn.disabled = false; }
+  } }, '接続テスト');
+  return h('div.key-row', input, show, testBtn);
 }
 
 export function openSettings() {
@@ -69,6 +94,10 @@ export function openSettings() {
       if (e) e.stop();
       toastSuccess('データを消去しました');
     } }, icon('trash'), ' 消去')),
+    h('h4.settings-h', 'YouTube から情報を取得（セトリを探す）'),
+    row('API キー', ytKeyControl(), ytKeyStatus()),
+    h('p.settings-note', '「追加」画面の「セトリを探す」で、動画の概要欄やコメントからセットリストを見つけるのに使います。個人のキーはこの端末にだけ保存され、バックアップには含まれません。 ',
+      h('button.linklike', { type: 'button', onclick: () => openPrivacy() }, 'プライバシーと利用規約')),
     h('h4.settings-h', 'YouTube Premium・広告について'),
     h('p.settings-note', 'このアプリはYouTube公式の埋め込みプレイヤーをそのまま使っています。広告が出るかどうかは、このブラウザがyoutube.comのログインCookieを埋め込みプレイヤーへ渡せるかで決まります。Premium会員なのに広告が出る場合は、ブラウザのCookie設定で「[*.]youtube.com」を常に許可してください（サードパーティCookieのブロックが原因です）。Electron版（.exe）はログインできないため、常に広告が表示されます。'),
     h('p.settings-note.muted', `utawakuwaku v3 · ${ctx.isElectron ? 'Electron' : 'Browser'}${navigator.userAgent.includes('Mobile') ? ' · Mobile' : ''}`)

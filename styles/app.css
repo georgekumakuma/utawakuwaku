@@ -1053,3 +1053,37 @@ body.th-anim .stage-video { transition: left .55s cubic-bezier(.2, .8, .2, 1), t
 .trim-dialog tr.muted td { color: var(--text-3); }
 .trim-title { max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .trim-opts .input { flex: 0 0 64px; width: 64px; }
+
+/* ===== YouTube API / privacy ===== */
+.key-row { display: flex; gap: 6px; align-items: center; }
+.key-row .input { width: 220px; height: 30px; font-family: var(--mono); font-size: 12px; }
+.privacy-sec h4 { margin: 14px 0 4px; font-size: 13.5px; }
+.privacy-sec p { margin: 0 0 6px; font-size: 13px; color: var(--text-2); line-height: 1.7; }
+.privacy-links { font-size: 11.5px; color: var(--text-3); }
+.privacy-links a { color: var(--text-2); }
+
+/* ===== Setlist finder ===== */
+.finder { margin: -4px 0 14px; }
+.finder:empty { display: none; }
+.finder-btn { width: 100%; height: 42px; border-style: dashed; border-color: hsl(var(--accent-h) 80% 60% / .5); color: var(--accent); background: hsl(var(--accent-h) 80% 60% / .06); }
+.finder-btn:hover:not(:disabled) { background: hsl(var(--accent-h) 80% 60% / .14); border-color: var(--accent); }
+.finder-hint, .finder-empty { font-size: 12.5px; color: var(--text-2); padding: 10px 12px; border-radius: 10px; background: var(--surface); display: flex; gap: 6px; align-items: flex-start; }
+.finder-loading { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-2); padding: 12px; }
+.finder-spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--border-2); border-top-color: var(--accent); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.finder-head { display: flex; align-items: center; gap: 4px; font-weight: 700; color: var(--ok); margin-bottom: 8px; font-size: 13px; }
+.finder-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.finder-card { display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); transition: border-color .15s, transform .15s, background .15s; min-width: 0; }
+.finder-card:hover { border-color: var(--accent); background: var(--surface-2); transform: translateY(-2px); }
+.finder-src { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-2); min-width: 0; }
+.finder-src b { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.finder-likes { margin-left: auto; font-size: 11.5px; color: var(--text-3); white-space: nowrap; }
+.finder-count { font-size: 20px; font-weight: 800; }
+.finder-count small { font-size: 11px; font-weight: 500; color: var(--text-3); margin-left: 6px; }
+.finder-preview { margin: 0; padding-left: 18px; font-size: 12px; color: var(--text-2); }
+.finder-preview li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.finder-preview li.more { list-style: none; margin-left: -18px; color: var(--text-3); }
+.finder-use { margin-top: auto; font-size: 12px; font-weight: 700; color: var(--accent); }
+.finder-foot { margin-top: 6px; }
+.setlist-table tr.unused td { opacity: .5; }
+.side-link-sm { font-size: 12px; height: 28px; color: var(--text-3); }
