@@ -45,7 +45,7 @@ export function on(topic, fn) {
 let saveTimer = null;
 export function commit(...topics) {
   for (const t of topics) {
-    if (t === 'data') scheduleSave();
+    if (t === 'data' || t === 'videos') scheduleSave();
     if (t === 'settings') storage.save('settings', state.settings);
     if (t === 'history') storage.save('history', state.history.slice(0, 300));
     const set = listeners.get(t);
@@ -282,7 +282,15 @@ export function setView(view) {
   state.ui.search = '';
   state.ui.filterVersion = null;
   state.ui.filterBroken = false;
-  commit('ui');
+  withTransition(() => commit('ui'));
+}
+
+// 画面の切り替えをなめらかに（View Transitions API。未対応・動きを減らす設定ではそのまま）
+export function withTransition(fn) {
+  const doc = typeof document !== 'undefined' ? document : null;
+  const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!doc || !doc.startViewTransition || reduce || doc.hidden) { fn(); return; }
+  try { doc.startViewTransition(fn); } catch { fn(); }
 }
 
 export function setSetting(key, value) {
@@ -355,4 +363,42 @@ export function replaceSongs(playlistId, songs) {
   pl.songs = songs.map(s => normalizeSong({ ...s, id: undefined })).filter(Boolean);
   commit('data');
   return pl;
+}
+
+// ===== 動画情報 =====
+export function videoDuration(videoId) {
+  const v = state.data.videos && state.data.videos[videoId];
+  return v ? v.duration : 0;
+}
+
+export function rememberDuration(videoId, duration) {
+  if (!videoId || !(duration > 0)) return;
+  if (!state.data.videos) state.data.videos = {};
+  const d = Math.round(duration);
+  const cur = state.data.videos[videoId];
+  if (cur && Math.abs(cur.duration - d) <= 1) return;
+  state.data.videos[videoId] = { duration: d };
+  commit('videos'); // 保存のみ（表示中の画面は作り直さない）
+}
+
+// 配信（動画）ごとにまとめる
+export function videoGroups() {
+  const map = new Map();
+  for (const { song, playlists: pls } of librarySongs()) {
+    let g = map.get(song.videoId);
+    if (!g) { g = { videoId: song.videoId, songs: [], playlists: new Set(), titles: new Map(), singer: '', addedAt: 0, plays: 0, lastPlayedAt: 0 }; map.set(song.videoId, g); }
+    g.songs.push({ song, playlistId: pls[0].id });
+    pls.forEach(p => g.playlists.add(p));
+    if (song.article) g.titles.set(song.article, (g.titles.get(song.article) || 0) + 1);
+    if (!g.singer && song.singer) g.singer = song.singer;
+    g.addedAt = Math.max(g.addedAt, song.addedAt || 0);
+    g.plays += song.playCount || 0;
+    g.lastPlayedAt = Math.max(g.lastPlayedAt, song.lastPlayedAt || 0);
+  }
+  return Array.from(map.values()).map(g => {
+    g.songs.sort((a, b) => a.song.start - b.song.start);
+    const title = Array.from(g.titles.entries()).sort((a, b) => b[1] - a[1])[0];
+    const maxEnd = Math.max(...g.songs.map(x => Math.max(x.song.end, x.song.start)));
+    return { ...g, title: title ? title[0] : '', duration: videoDuration(g.videoId), maxEnd };
+  });
 }

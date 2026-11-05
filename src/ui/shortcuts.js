@@ -11,6 +11,7 @@ import { openPalette } from './palette.js';
 import { openHelp } from './help.js';
 import { openAddModal } from './addmodal.js';
 import { closeDrawer } from './sidebar.js';
+import { isTheaterOpen, closeTheater, toggleTheater } from './theater.js';
 
 export function installShortcuts({ focusSearch, views, editor }) {
   document.addEventListener('keydown', (e) => {
@@ -22,6 +23,7 @@ export function installShortcuts({ focusSearch, views, editor }) {
     if (e.key === 'Escape') {
       if (closeTopModal()) { e.preventDefault(); return; }
       closeMenu();
+      if (isTheaterOpen()) { closeTheater(); return; }
       if (document.body.classList.contains('drawer-open')) { closeDrawer(); return; }
       if (typing) { document.activeElement.blur(); return; }
       if (state.ui.editorOpen) { actions.closeEditor(); return; }
@@ -52,6 +54,7 @@ export function installShortcuts({ focusSearch, views, editor }) {
       case 'm': actions.toggleMute(); break;
       case 'v': store.setSetting('showVideo', !state.settings.showVideo); break;
       case 'q': actions.togglePanel('queue'); break;
+      case 't': toggleTheater(); break;
       case 'a': openAddModal(); break;
       case 'l': views.scrollToPlaying(); break;
       case 'i': if (editor.isOpen()) editor.markStart(); break;

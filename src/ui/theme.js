@@ -13,10 +13,14 @@ export const ACCENTS = {
 
 const mq = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: light)') : null;
 
+export function currentTheme() {
+  const t = state.settings.theme;
+  return t === 'auto' ? (mq && mq.matches ? 'light' : 'dark') : t;
+}
+
 export function applyTheme() {
   const root = document.documentElement;
-  let theme = state.settings.theme;
-  if (theme === 'auto') theme = mq && mq.matches ? 'light' : 'dark';
+  const theme = currentTheme();
   root.dataset.theme = theme;
   const a = ACCENTS[state.settings.accent] || ACCENTS.aurora;
   root.style.setProperty('--accent', a.from);
@@ -26,6 +30,6 @@ export function applyTheme() {
   if (meta) meta.content = theme === 'light' ? '#f5f6fa' : '#0e0f14';
 }
 
-export function watchSystemTheme() {
-  if (mq) mq.addEventListener('change', () => { if (state.settings.theme === 'auto') applyTheme(); });
+export function watchSystemTheme(onChange = applyTheme) {
+  if (mq) mq.addEventListener('change', () => { if (state.settings.theme === 'auto') onChange(); });
 }

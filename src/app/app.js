@@ -24,6 +24,8 @@ import { listBankPresets } from './bank.js';
 import * as wakelock from './wakelock.js';
 import { openAddModal } from '../ui/addmodal.js';
 import { openAddBankDialog } from '../ui/sharedbank.js';
+import { mountAmbient, refreshColors } from '../ui/ambient.js';
+import { installDropIn } from '../ui/dropin.js';
 
 function $(id) { return document.getElementById(id); }
 
@@ -98,7 +100,7 @@ function showWelcome() {
     h('p.hint', 'データはこのブラウザの中にだけ保存されます。設定 → バックアップで JSON に保存できます。')
   );
   openModal({
-    title: 'utawakuwaku v2 へようこそ', content, size: 'md',
+    title: 'utawakuwaku へようこそ', content, size: 'md',
     actions: [
       { label: 'バンクを見る', onClick: () => store.setView('bank') },
       { label: '曲を追加する', onClick: () => openAddModal() },
@@ -106,13 +108,31 @@ function showWelcome() {
     ]
   });
   store.setSetting('seenWelcome', true);
+  store.setSetting('seenV3', true);
+}
+
+function showWhatsNew() {
+  const card = (ic, title, desc, label, run) => h('button.whatsnew-card', { type: 'button', onclick: () => { m.close(); run(); } },
+    h('span.whatsnew-ic', icon(ic)), h('b', title), h('span', desc), h('span.whatsnew-go', label, ' →'));
+  const content = h('div.whatsnew',
+    h('p', '聴く・遊ぶ・眺める、がもっと楽しくなりました。'),
+    h('div.whatsnew-grid',
+      card('theater', 'シアターモード', '曲の色に染まるオーロラの中で、画面いっぱいに。スマホではミニプレイヤーをタップ', 'T キーで開く', () => import('../ui/theater.js').then(x => x.openTheater())),
+      card('game', 'イントロクイズ', '数秒聴いて4択で曲名当て。コンボとハイスコアつき', '遊んでみる', () => import('../ui/quiz.js').then(x => x.openQuizSetup())),
+      card('radio', 'おまかせラジオ', '評価が高い曲・しばらく聴いていない曲を中心に自動選曲', '再生する', () => actions.playRadio()),
+      card('timeline', '配信アーカイブ', '配信ごとに、登録した曲をタイムラインで一望。すき間をクリックで追加', '開く', () => store.setView('archive'))
+    ),
+    h('p.hint', 'ほかにも: 曲のサムネイルに合わせて色が変わります（設定でオフ可）。YouTube の URL やセットリストは、画面のどこに貼り付けても・ドロップしても追加できます。')
+  );
+  const m = openModal({ title: '✨ utawakuwaku v3 の新機能', content, size: 'lg', actions: [{ label: 'あとで', primary: true }] });
+  store.setSetting('seenV3', true);
 }
 
 async function main() {
   applyTheme();
   const boot = await store.init();
   applyTheme();
-  watchSystemTheme();
+  watchSystemTheme(() => refreshColors());
   requestPersistence();
 
   const engine = new Engine({ deckIds: ['deckA', 'deckB'] });
@@ -130,6 +150,8 @@ async function main() {
   const views = mountViews($('content'));
   const editor = mountPanel($('panel'));
   mountPlayerbar($('playerbar'));
+  mountAmbient();
+  installDropIn();
   installShortcuts({ focusSearch: topbar.focusSearch, views, editor });
   $('splash').classList.add('hide');
   setTimeout(() => $('splash').remove(), 600);
@@ -170,6 +192,13 @@ async function main() {
     toast('プレイリストの最後まで再生しました', { duration: 2000 });
   });
   installMediaSessionHandlers(engine);
+  // 動画の長さを覚えておく（配信アーカイブのタイムラインに使う）
+  engine.on('tick', (t) => {
+    const s = engine.state.song;
+    if (!s || !(t.duration > 0) || engine.state.status !== 'playing') return;
+    const vd = engine.videoData();
+    if (vd && vd.video_id === s.videoId) store.rememberDuration(s.videoId, t.duration);
+  });
 
   // プレイリスト編集を再生コンテキストに反映
   store.on('data', () => {
@@ -202,6 +231,7 @@ async function main() {
   // 共有URL
   const imported = await importFromHash();
   if (!imported && !state.settings.seenWelcome) showWelcome();
+  else if (!imported && !state.settings.seenV3) showWhatsNew();
 
   // YouTube プレイヤー
   try {

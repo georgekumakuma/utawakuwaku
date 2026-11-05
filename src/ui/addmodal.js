@@ -1,6 +1,6 @@
 // 「追加」モーダル: URL / セットリスト貼り付け / ファイル・CSVテキスト
 
-import { h, icon, debounce } from './dom.js';
+import { h, icon, debounce, fill } from './dom.js';
 import { openModal } from './dialog.js';
 import { state } from '../core/store.js';
 import * as store from '../core/store.js';
@@ -20,7 +20,8 @@ const SETLIST_SAMPLE = `例（YouTubeのコメント・概要欄からそのま�
 9:01 ～ 12:40 残酷な天使のテーゼ
 1:00:05 アンコール`;
 
-export function openAddModal(initialTab = 'url') {
+// prefill: { url, text } — 貼り付け・ドロップから開いたときの初期値
+export function openAddModal(initialTab = 'url', prefill = {}) {
   let tab = initialTab;
   const tabs = h('div.tabs');
   const body = h('div.add-body');
@@ -41,7 +42,7 @@ export function openAddModal(initialTab = 'url') {
     let current = null;
     const update = debounce(async () => {
       const p = parseYouTubeInput(input.value);
-      if (!p) { box.replaceChildren(input.value.trim() ? h('div.form-error', 'YouTubeのURLまたは11文字の動画IDを入力してください') : null); current = null; onChange(null); return; }
+      if (!p) { fill(box, input.value.trim() ? h('div.form-error', 'YouTubeのURLまたは11文字の動画IDを入力してください') : null); current = null; onChange(null); return; }
       current = { videoId: p.videoId, start: p.start, title: '', author: '' };
       box.replaceChildren(h('img', { src: thumbUrl(p.videoId, 'mqdefault'), alt: '', onerror: (e) => { e.target.style.visibility = 'hidden'; } }), h('div.video-preview-text', h('div.vp-title', '動画情報を取得中…'), h('div.vp-author', p.videoId)));
       onChange(current);
@@ -78,6 +79,7 @@ export function openAddModal(initialTab = 'url') {
       modal.close();
     } }, icon('plus'), ' 動画をまるごと追加');
     const pv = videoPreview((cur) => { v = cur; btnEdit.disabled = !cur; btnWhole.disabled = !cur; });
+    if (prefill.url) { pv.input.value = prefill.url; pv.input.dispatchEvent(new Event('input')); }
     body.replaceChildren(
       pv.el,
       h('p.hint', 'URLに「&t=」が付いていれば、その位置が開始位置になります。区間は次の画面でプレイヤーを見ながら I / O キー（開始 / 終了）で決められます。'),
@@ -144,6 +146,8 @@ export function openAddModal(initialTab = 'url') {
       preview,
       h('div.btn-row', btnNew, btnCurrent)
     );
+    if (prefill.url) { pv.input.value = prefill.url; pv.input.dispatchEvent(new Event('input')); }
+    if (prefill.text) { ta.value = prefill.text; reparse(); }
   }
 
   // ===== ファイル タブ =====
@@ -181,6 +185,7 @@ export function openAddModal(initialTab = 'url') {
       h('div.field', ta, count),
       h('div.btn-row', btnNew, btnCur)
     );
+    if (prefill.text) { ta.value = prefill.text; ta.dispatchEvent(new Event('input')); }
   }
 
   function renderBody() {
@@ -190,6 +195,7 @@ export function openAddModal(initialTab = 'url') {
   }
   renderTabs();
   renderBody();
+  prefill = {};
   void toast; void store; void state;
   return modal;
 }

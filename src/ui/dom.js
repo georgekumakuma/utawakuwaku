@@ -39,6 +39,13 @@ export function append(parent, children) {
   return parent;
 }
 
+// replaceChildren と同じだが、null / false を飛ばす（h() と同じ扱い）。
+// ネイティブの replaceChildren(null) は文字列 "null" を挿入してしまう
+export function fill(el, ...children) {
+  el.replaceChildren(...children.flat().filter(c => c != null && c !== false));
+  return el;
+}
+
 export function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); return node; }
 export function $(sel, root = document) { return root.querySelector(sel); }
 export function $$(sel, root = document) { return Array.from(root.querySelectorAll(sel)); }
@@ -178,7 +185,11 @@ const ICONS = {
   scissors: '<path d="M9.6 7.6A3 3 0 1 0 8 9.9l1.4 1.4-2 2A3 3 0 1 0 9 15l2-2 8 8h3L9.6 7.6zM6 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm0 10a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm7-5.5-1.5-1.5L19 3h3L13 12.5z"/>',
   layers: '<path d="m12 16-7-5.4L3.5 12 12 18.6l8.5-6.6L19 10.6 12 16zm0-2.5 7-5.5-7-5.5L5 8l7 5.5z"/>',
   text: '<path d="M5 4v3h5.5v12h3V7H19V4z"/>',
-  file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/>'
+  file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/>',
+  game: '<path d="M21 6H3a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2zm-10 7H8v3H6v-3H3v-2h3V8h2v3h3v2zm4.5 2a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm4-3a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/>',
+  radio: '<path d="M3.24 6.15A2 2 0 0 0 2 8v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2H8.3l8.26-3.34L15.88 1 3.24 6.15zM7 20a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm13-8h-2v-2h-2v2H4V8h16v4z"/>',
+  timeline: '<path d="M3 5h8v4H3zm10 0h8v4h-8zM3 11h5v4H3zm7 0h11v4H10zM3 17h12v4H3zm14 0h4v4h-4z"/>',
+  theater: '<path d="M21 3H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5v2h8v-2h5a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 14H3V5h18v12zM10 8v6l5-3z"/>'
 };
 
 export function icon(name, cls = '') {
@@ -211,4 +222,17 @@ export function setStars(wrap, rating) {
     s.textContent = i < rating ? '★' : '☆';
   });
   wrap.setAttribute('aria-label', `評価 ${rating}`);
+}
+
+// 文字が1つずつ浮かび上がるタイトル表示（同じ文字列なら何もしない）
+export function animateText(el, text, { stagger = 22, max = 48 } = {}) {
+  if (el.dataset.text === text) return;
+  el.dataset.text = text;
+  el.setAttribute('aria-label', text);
+  if (text.length > max) {
+    el.replaceChildren(h('span.ch-fade', text));
+    return;
+  }
+  el.replaceChildren(...Array.from(text).map((ch, i) =>
+    h('span.ch', { 'aria-hidden': 'true', style: { animationDelay: `${i * stagger}ms` } }, ch === ' ' ? ' ' : ch)));
 }

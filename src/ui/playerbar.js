@@ -45,6 +45,7 @@ export function mountPlayerbar(root) {
       sl ? { label: '解除', icon: 'close', onClick: () => actions.setSleepTimer(null) } : null
     ].filter(Boolean), { anchor: e.currentTarget });
   } }, icon('clock'), h('span.pb-sleep-badge'));
+  const btnTheater = h('button.icon-btn.pb-panel', { type: 'button', title: 'シアターモード (T)', onclick: () => import('./theater.js').then(m => m.openTheater()) }, icon('theater'));
   const btnEditor = h('button.icon-btn.pb-panel', { type: 'button', title: '編集パネル', onclick: () => actions.togglePanel('editor') }, icon('edit'));
   const btnQueue = h('button.icon-btn.pb-panel', { type: 'button', title: 'キュー (Q)', onclick: () => actions.togglePanel('queue') }, icon('queue'));
   const btnVideo = h('button.icon-btn.pb-panel', { type: 'button', title: '映像を隠す/表示 (V)', onclick: () => store.setSetting('showVideo', !state.settings.showVideo) }, icon('video'));
@@ -56,10 +57,33 @@ export function mountPlayerbar(root) {
       h('div.pb-transport', btnShuffle, btnPrev, btnPlay, btnNext, btnRepeat, btnStop),
       seek
     ),
-    h('div.pb-right', rateBtn, h('div.pb-volume', volIcon, vol), btnSleep, btnVideo, btnEditor, btnQueue)
+    h('div.pb-right', rateBtn, h('div.pb-volume', volIcon, vol), btnSleep, btnVideo, btnTheater, btnEditor, btnQueue)
   );
   thumb.addEventListener('error', () => { thumb.style.visibility = 'hidden'; });
-  thumb.addEventListener('click', () => { const s = ctx.engine.state.song; if (s && !s._draft) { store.setView('playlist'); } });
+  // ミニプレイヤー: タップで全画面プレイヤー、左右スワイプで曲送り、上スワイプで全画面
+  const left = root.querySelector('.pb-left');
+  let sw = null;
+  left.addEventListener('pointerdown', (ev) => { sw = { x: ev.clientX, y: ev.clientY, id: ev.pointerId, t: performance.now() }; });
+  left.addEventListener('pointermove', (ev) => {
+    if (!sw || ev.pointerId !== sw.id || ev.pointerType === 'mouse') return;
+    const dx = ev.clientX - sw.x;
+    left.style.transform = `translateX(${dx * 0.5}px)`;
+    left.style.opacity = String(1 - Math.min(0.6, Math.abs(dx) / 300));
+  });
+  const endSwipe = (ev) => {
+    if (!sw || ev.pointerId !== sw.id) return;
+    const dx = ev.clientX - sw.x, dy = ev.clientY - sw.y;
+    const quick = performance.now() - sw.t < 600;
+    sw = null;
+    left.style.transform = '';
+    left.style.opacity = '';
+    const vib = () => { try { navigator.vibrate && navigator.vibrate(8); } catch { /* ignore */ } };
+    if (ev.pointerType !== 'mouse' && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) { vib(); if (dx < 0) actions.next(); else actions.prev(); return; }
+    if (ev.pointerType !== 'mouse' && dy < -40 && quick) { vib(); import('./theater.js').then(m => m.openTheater()); return; }
+    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) import('./theater.js').then(m => m.openTheater());
+  };
+  left.addEventListener('pointerup', endSwipe);
+  left.addEventListener('pointercancel', () => { sw = null; left.style.transform = ''; left.style.opacity = ''; });
 
   // ----- シーク -----
   let scrubbing = false;

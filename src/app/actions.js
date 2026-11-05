@@ -20,6 +20,7 @@ export function playItems(items, songId) {
   const e = engine();
   if (!e || !e.ready) { toastError(state.ui.playerError || 'YouTubeプレイヤーの準備ができていません'); return; }
   if (!items.length) return;
+  state.ui.radio = false;
   e.setContext(items, songId || items[0].song.id, { play: true });
 }
 
@@ -417,4 +418,22 @@ export function markBroken(videoId, reason) {
     if (s.videoId === videoId && s.broken !== reason) { s.broken = reason; changed = true; }
   }
   if (changed) commit('data');
+}
+
+// ===== おまかせラジオ =====
+export async function playRadio() {
+  const e = engine();
+  if (!e || !e.ready) { toastError(state.ui.playerError || 'YouTubeプレイヤーの準備ができていません'); return; }
+  const { radioPick } = await import('../core/insights.js');
+  const items = store.librarySongs().map(({ song, playlists }) => ({ song, playlistId: playlists[0].id }));
+  const picked = radioPick(items, Math.min(150, items.length));
+  if (!picked.length) { toast('ライブラリに曲がありません'); return; }
+  e.setShuffle(false);
+  store.setSetting('shuffle', false);
+  e.setRepeat('all');
+  store.setSetting('repeat', 'all');
+  e.setContext(picked, picked[0].song.id, { play: true });
+  state.ui.radio = true;
+  commit('ui');
+  toast(`📻 おまかせラジオ: 評価の高い曲・しばらく聴いていない曲を中心に${picked.length}曲を選びました`, { duration: 3500 });
 }

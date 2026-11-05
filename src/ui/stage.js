@@ -1,6 +1,6 @@
 // ステージ: 動画（2デッキ）と「再生中」の情報
 
-import { h, icon, stars, setStars } from './dom.js';
+import { h, icon, stars, setStars, animateText, fill } from './dom.js';
 import { state } from '../core/store.js';
 import * as store from '../core/store.js';
 import * as actions from '../app/actions.js';
@@ -28,11 +28,16 @@ export function mountStage(root) {
       h('div.np-actions',
         h('button.btn.btn-ghost.sm', { type: 'button', title: 'この曲を編集 (E)', onclick: () => { const s = ctx.engine.state.song; if (s && !s._draft) actions.openEditor(s.id); } }, icon('edit'), ' 編集'),
         h('button.btn.btn-ghost.sm', { type: 'button', title: 'YouTubeで開く', onclick: () => { const s = ctx.engine.state.song; if (s) actions.openOnYouTube(s); } }, icon('external')),
-        h('button.btn.btn-ghost.sm', { type: 'button', title: '映像を隠す/表示 (V)', onclick: () => store.setSetting('showVideo', !state.settings.showVideo) }, icon('video'))
+        h('button.btn.btn-ghost.sm', { type: 'button', title: '映像を隠す/表示 (V)', onclick: () => store.setSetting('showVideo', !state.settings.showVideo) }, icon('video')),
+        h('button.btn.btn-ghost.sm.np-theater', { type: 'button', title: 'シアターモード (T)', onclick: () => import('./theater.js').then(m => m.openTheater()) }, icon('theater'), ' シアター')
       )),
     nextLine
   );
-  root.append(bg, video, meta);
+  const glowA = h('i'), glowB = h('i');
+  const glow = h('div.stage-glow', { 'aria-hidden': 'true' }, glowA, glowB);
+  const wrap = h('div.stage-wrap', glow, video);
+  root.append(bg, wrap, meta);
+  let glowFront = glowA;
 
   let lastVideoId = null;
   function render() {
@@ -41,6 +46,7 @@ export function mountStage(root) {
     root.classList.toggle('has-song', !!s);
     root.classList.toggle('video-hidden', !state.settings.showVideo);
     if (!s) {
+      title.dataset.text = '';
       title.textContent = '再生していません';
       sub.textContent = 'リストの曲をクリックすると再生が始まります。Space で再生/停止、← → で曲送り。';
       chips.replaceChildren();
@@ -52,15 +58,20 @@ export function mountStage(root) {
     if (s.videoId !== lastVideoId) {
       lastVideoId = s.videoId;
       bg.style.backgroundImage = `url(${thumbUrl(s.videoId, 'hqdefault')})`;
+      const back = glowFront === glowA ? glowB : glowA;
+      back.style.backgroundImage = `url(${thumbUrl(s.videoId, 'mqdefault')})`;
+      back.classList.add('on');
+      glowFront.classList.remove('on');
+      glowFront = back;
     }
-    title.textContent = s.title || '(無題)';
+    animateText(title, s.title || '(無題)');
     const parts = [];
     if (s.artist) parts.push(s.artist);
     if (s.article) parts.push(s.article);
     sub.textContent = parts.join(' · ');
     sub.title = sub.textContent;
     const pl = e.state.playlistId ? store.playlistById(e.state.playlistId) : null;
-    chips.replaceChildren(
+    fill(chips,
       pl ? h('span.chip.chip-pl', pl.icon ? pl.icon + ' ' : '', pl.name) : (s._draft ? h('span.chip', '編集中のドラフト') : null),
       h('span.chip', hasValidEnd(s) ? `${formatTime(s.start)} – ${formatTime(s.end)}` : `${formatTime(s.start)} – 最後まで`),
       ...(s.tags || []).map(t => h('span.chip.chip-tag', '#' + t)),
@@ -68,7 +79,7 @@ export function mountStage(root) {
     );
     setStars(st, s.rating);
     const nx = e.peekNext();
-    nextLine.replaceChildren(nx && nx.item && nx.item.song !== s ? h('span', icon('next'), ' 次: ', h('b', nx.item.song.title), nx.from === 'queue' ? h('span.chip.sm', 'キュー') : null) : (nx && nx.from === 'repeat' ? h('span', icon('repeatOne'), ' この曲をリピート') : null));
+    fill(nextLine, nx && nx.item && nx.item.song !== s ? h('span', icon('next'), ' 次: ', h('b', nx.item.song.title), nx.from === 'queue' ? h('span.chip.sm', 'キュー') : null) : (nx && nx.from === 'repeat' ? h('span', icon('repeatOne'), ' この曲をリピート') : null));
   }
 
   if (ctx.engine) ctx.engine.on('change', render);

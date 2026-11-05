@@ -111,3 +111,36 @@ export function computeStats(playlists, history, { now = Date.now() } = {}) {
     broken: unique.filter(s => s.broken).length
   };
 }
+
+// おまかせラジオの選曲: 評価が高い曲・しばらく聴いていない曲・まだ聴いていない曲ほど選ばれやすい重み付き抽選。
+// 再生できない（リンク切れ）曲は除外し、同じ動画が連続しないようにする。
+export function radioPick(items, n, { now = Date.now(), rand = Math.random } = {}) {
+  const DAY = 86400000;
+  const pool = items.filter(it => it.song && !it.song.broken).map(it => {
+    const s = it.song;
+    const rating = Math.pow(Math.max(1, s.rating || 1), 1.6);
+    const recency = s.lastPlayedAt ? Math.min(1, Math.max(0.15, (now - s.lastPlayedAt) / (3 * DAY))) : 1.25;
+    return { it, w: rating * recency };
+  });
+  const out = [];
+  while (out.length < n && pool.length) {
+    const prevVid = out.length ? out[out.length - 1].song.videoId : null;
+    let cands = pool.filter(p => p.it.song.videoId !== prevVid);
+    if (!cands.length) cands = pool;
+    const total = cands.reduce((a, p) => a + p.w, 0);
+    let x = rand() * total;
+    let chosen = cands[cands.length - 1];
+    for (const p of cands) { x -= p.w; if (x <= 0) { chosen = p; break; } }
+    out.push(chosen.it);
+    pool.splice(pool.indexOf(chosen), 1);
+  }
+  return out;
+}
+
+// 文字列から決定的な乱数列を作る（テストや「今日のおすすめ」用）
+export function seededRandom(seed) {
+  let x = 0;
+  for (const ch of String(seed)) x = (x * 31 + ch.charCodeAt(0)) >>> 0;
+  x = x || 1;
+  return () => { x ^= x << 13; x >>>= 0; x ^= x >> 17; x ^= x << 5; x >>>= 0; return x / 4294967296; };
+}

@@ -79,7 +79,7 @@ export function newPlaylist(name, songs = [], extra = {}) {
 }
 
 export function emptyData() {
-  return { version: DATA_VERSION, playlists: [], currentId: null, banks: [] };
+  return { version: DATA_VERSION, playlists: [], currentId: null, banks: [], videos: {} };
 }
 
 // 旧 v2 ストア（{current, lists:{name:[songs]}}）→ v3
@@ -124,6 +124,7 @@ export function sanitizeData(input) {
     ? input.currentId
     : (data.playlists[0] ? data.playlists[0].id : null);
   data.banks = sanitizeBanks(input.banks);
+  data.videos = sanitizeVideos(input.videos);
   return data;
 }
 
@@ -151,7 +152,14 @@ export const DEFAULT_SETTINGS = {
   confirmDelete: true,
   keepScreenAwake: false,
   bankSeeded: false,
-  seenWelcome: false
+  seenWelcome: false,
+  artworkColor: true,     // 再生中の曲のサムネイルの色を UI に反映
+  aurora: true,           // シアターモードのオーロラ背景アニメーション
+  quizBest: 0,            // イントロクイズの最高得点
+  quizCount: 10,
+  quizSeconds: 5,
+  quizFrom: 'start',      // 'start' | 'random'
+  seenV3: false           // v3 の新機能案内を見たか
 };
 
 export function sanitizeSettings(s) {
@@ -165,6 +173,9 @@ export function sanitizeSettings(s) {
   if (![0.5, 0.75, 1, 1.25, 1.5, 2].includes(out.rate)) out.rate = 1;
   if (!['off', 'all', 'one'].includes(out.repeat)) out.repeat = 'all';
   if (!['dark', 'light', 'auto'].includes(out.theme)) out.theme = 'dark';
+  if (![5, 10, 20].includes(out.quizCount)) out.quizCount = 10;
+  if (![3, 5, 10].includes(out.quizSeconds)) out.quizSeconds = 5;
+  if (!['start', 'random'].includes(out.quizFrom)) out.quizFrom = 'start';
   return out;
 }
 
@@ -191,6 +202,17 @@ export function sanitizeBanks(list) {
       addedAt: Number(b.addedAt) || Date.now(),
       fetchedAt: Number(b.fetchedAt) || 0
     });
+  }
+  return out;
+}
+
+// 動画ごとの情報（再生したときに分かった長さなど）
+export function sanitizeVideos(v) {
+  const out = {};
+  if (!v || typeof v !== 'object') return out;
+  for (const [id, info] of Object.entries(v)) {
+    const d = Number(info && info.duration);
+    if (/^[\w-]{11}$/.test(id) && d > 0 && d < 86400 * 2) out[id] = { duration: Math.round(d) };
   }
   return out;
 }

@@ -1,14 +1,15 @@
 // メインコンテンツのビュー: プレイリスト / ライブラリ / 履歴 / キュー / バンク
 
-import { h, icon, copyText } from './dom.js';
+import { h, icon, copyText, fill } from './dom.js';
 import * as store from '../core/store.js';
 import { state, commit } from '../core/store.js';
 import * as actions from '../app/actions.js';
 import { ctx } from '../app/context.js';
 import { SongList } from './songlist.js';
+import { thumbUrl } from '../core/ytid.js';
 import { showMenu } from './menu.js';
 import { openSongMenu } from '../app/songmenu.js';
-import { formatDurationHuman, formatRelative } from '../core/time.js';
+import { formatDurationHuman, formatRelative, formatTime } from '../core/time.js';
 import { hasValidEnd, normalizeSong } from '../core/model.js';
 import { listBankPresets, countBankCSV, listDirectory, inspectSharedUrl } from '../app/bank.js';
 import { openAddBankDialog, loadSharedPlaylist, removeSharedBank, copyBankLink, editingGuide, sourceOf, refreshFromSource, copyForSpreadsheet } from './sharedbank.js';
@@ -98,7 +99,7 @@ export function mountViews(root) {
     const sel = entry ? entry.list.selectedItems() : [];
     if (sel.length < 2) { selBar.replaceChildren(); selBar.classList.remove('show'); return; }
     const playlistId = currentView === 'playlist' ? state.data.currentId : null;
-    selBar.replaceChildren(
+    fill(selBar,
       h('span.selection-count', `${sel.length}曲を選択中`),
       h('button.btn.btn-ghost.sm', { type: 'button', onclick: () => actions.playItems(sel, sel[0].song.id) }, icon('play'), '再生'),
       h('button.btn.btn-ghost.sm', { type: 'button', onclick: () => actions.enqueue(sel, { next: true }) }, icon('next'), '次に再生'),
@@ -429,6 +430,94 @@ export function mountViews(root) {
     ));
   }
 
+  // ===== 配信アーカイブ =====
+  let lastArchiveSong = null;
+  function renderArchive() {
+    const q = state.ui.search.trim().toLowerCase();
+    let groups = store.videoGroups();
+    const total = groups.length;
+    if (q) groups = groups.filter(g => `${g.title} ${g.singer} ${g.songs.map(x => `${x.song.title} ${x.song.artist}`).join(' ')}`.toLowerCase().includes(q));
+    const sort = state.ui.archiveSort || 'recent';
+    const sorters = {
+      recent: (a, b) => b.addedAt - a.addedAt,
+      songs: (a, b) => b.songs.length - a.songs.length,
+      plays: (a, b) => b.plays - a.plays,
+      title: (a, b) => a.title.localeCompare(b.title, 'ja')
+    };
+    groups.sort(sorters[sort] || sorters.recent);
+    const sortSel = h('select.select.sm', { onchange: (e) => { state.ui.archiveSort = e.target.value; commit('ui'); } },
+      ...[['recent', '最近追加した配信'], ['songs', '曲数が多い順'], ['plays', 'よく聴く順'], ['title', 'タイトル順']].map(([v, l]) => h('option', { value: v, selected: sort === v }, l)));
+    head.replaceChildren(
+      h('div.view-head',
+        h('div.view-head-main',
+          h('div.view-kicker', '動画ごとに見る'),
+          h('h1.view-title', '配信アーカイブ'),
+          h('div.view-meta', `${total}本の配信・動画`, q ? ` · ${groups.length}本を表示` : '', ' · バーの色付き部分が登録した区間。すき間をクリックすると、その位置から新しい曲を登録できます')
+        )
+      ),
+      h('div.view-tools', sortSel)
+    );
+    const playingId = ctx.engine && ctx.engine.state.song ? ctx.engine.state.song.id : null;
+    const list = h('div.archive-list');
+    for (const g of groups) {
+      const span = Math.max(60, g.duration || Math.ceil(g.maxEnd * 1.04));
+      const known = !!g.duration;
+      const regLen = g.songs.reduce((a, x) => a + (hasValidEnd(x.song) ? x.song.end - x.song.start : 0), 0);
+      const tip = h('div.arc-tip');
+      const bar = h('div.arc-bar', { title: '' });
+      for (const x of g.songs) {
+        const s = x.song;
+        const end = hasValidEnd(s) ? s.end : (known ? span : Math.min(span, s.start + 30));
+        const seg = h('button.arc-seg', {
+          type: 'button', dataset: { id: s.id }, class: `${s.id === playingId ? 'playing' : ''} ${s.broken ? 'broken' : ''} ${hasValidEnd(s) ? '' : 'open'}`,
+          style: { left: `${(s.start / span) * 100}%`, width: `calc(${(Math.max(0, end - s.start) / span) * 100}% - 2px)` },
+          'aria-label': `${s.title} ${formatTime(s.start)}〜${hasValidEnd(s) ? formatTime(s.end) : '最後'}`
+        });
+        seg.addEventListener('click', (ev) => { ev.stopPropagation(); actions.playItems(g.songs, s.id); });
+        seg.addEventListener('mouseenter', () => {
+          tip.replaceChildren(h('b', s.title), h('span', `${formatTime(s.start)}〜${hasValidEnd(s) ? formatTime(s.end) : '最後'}${s.artist ? ' · ' + s.artist : ''}`));
+          tip.style.left = `${Math.min(92, Math.max(8, ((s.start + (end - s.start) / 2) / span) * 100))}%`;
+          tip.classList.add('show');
+        });
+        seg.addEventListener('mouseleave', () => tip.classList.remove('show'));
+        bar.appendChild(seg);
+      }
+      bar.addEventListener('click', (ev) => {
+        const r = bar.getBoundingClientRect();
+        const at = Math.round(((ev.clientX - r.left) / r.width) * span);
+        actions.openEditor(null, { videoId: g.videoId, start: at, end: 0, article: g.title, singer: g.singer });
+        if (ctx.engine && ctx.engine.ready) ctx.engine.loadForEdit({ videoId: g.videoId, start: at, end: 0, title: '', rating: 3, _draft: true }, { autoplay: true });
+      });
+      const ticks = h('div.arc-ticks', h('span', '0:00'), h('span', formatTime(span / 2)), h('span', (known ? '' : '≈') + formatTime(span)));
+      list.appendChild(h('article.arc-card', { class: g.songs.some(x => x.song.id === playingId) ? 'now' : '' },
+        h('button.arc-thumb', { type: 'button', title: 'この配信の曲を順番に再生', onclick: () => actions.playItems(g.songs, g.songs[0].song.id) },
+          h('img', { src: thumbUrl(g.videoId, 'mqdefault'), alt: '', loading: 'lazy', onerror: (e) => { e.target.style.visibility = 'hidden'; } }),
+          h('span.arc-thumb-play', icon('play'))),
+        h('div.arc-body',
+          h('div.arc-title', { title: g.title }, g.title || g.videoId),
+          h('div.arc-meta', g.singer ? h('span', g.singer) : null, h('span', `${g.songs.length}曲`), regLen ? h('span', `登録 ${formatDurationHuman(regLen)}`) : null,
+            g.plays ? h('span', `${g.plays}回再生`) : null, g.lastPlayedAt ? h('span', formatRelative(g.lastPlayedAt)) : null),
+          h('div.arc-timeline', bar, tip),
+          ticks),
+        h('div.arc-actions',
+          h('button.icon-btn', { type: 'button', title: '通しで再生', onclick: () => actions.playItems(g.songs, g.songs[0].song.id) }, icon('play')),
+          h('button.icon-btn', { type: 'button', title: 'メニュー', onclick: (e) => showMenu([
+            { label: 'この配信の曲を順番に再生', icon: 'play', onClick: () => actions.playItems(g.songs, g.songs[0].song.id) },
+            { label: '「次に再生」に追加', icon: 'next', onClick: () => actions.enqueue(g.songs, { next: true }) },
+            { label: 'この配信に曲を追加', icon: 'plus', onClick: () => {
+              const last = g.songs[g.songs.length - 1].song;
+              actions.openEditor(null, { videoId: g.videoId, start: hasValidEnd(last) ? last.end : last.start, end: 0, article: g.title, singer: g.singer });
+            } },
+            { label: 'この配信の曲で新しいプレイリスト', icon: 'library', onClick: () => actions.importSongs(g.songs.map(x => ({ ...x.song, id: undefined })), { mode: 'new', name: g.title || '配信' }) },
+            'sep',
+            { label: 'YouTubeで開く', icon: 'external', onClick: () => window.open(`https://www.youtube.com/watch?v=${g.videoId}`, '_blank', 'noopener') }
+          ], { anchor: e.currentTarget }) }, icon('more')))
+      ));
+    }
+    if (!groups.length) list.appendChild(emptyState(q ? '該当する配信がありません' : 'まだ曲がありません', '曲を登録すると、配信（動画）ごとにここへまとまります'));
+    body.replaceChildren(list);
+  }
+
   // ===== 統計 =====
   function tile(label, value, sub) {
     return h('div.stat-tile', h('div.stat-label', label), h('div.stat-value', value), sub ? h('div.stat-sub', sub) : null);
@@ -510,6 +599,7 @@ export function mountViews(root) {
     else if (view === 'queue') renderQueue();
     else if (view === 'bank') renderBank();
     else if (view === 'stats') renderStats();
+    else if (view === 'archive') renderArchive();
     if (changed) body.scrollTop = 0;
   }
 
@@ -524,6 +614,12 @@ export function mountViews(root) {
         entry.list.setActive(ctx.engine.state.song ? ctx.engine.state.song.id : null);
       }
       if (currentView === 'queue') render();
+      const sid = ctx.engine.state.song ? ctx.engine.state.song.id : null;
+      if (currentView === 'archive' && sid !== lastArchiveSong) {
+        body.querySelectorAll('.arc-seg').forEach(el => el.classList.toggle('playing', el.dataset.id === sid));
+        body.querySelectorAll('.arc-card').forEach(el => el.classList.toggle('now', !!el.querySelector('.arc-seg.playing')));
+      }
+      lastArchiveSong = sid;
     });
   }
   render();

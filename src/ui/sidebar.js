@@ -14,7 +14,7 @@ export function mountSidebar(root) {
   const nav = h('nav.side-nav');
   const plList = h('ul.side-playlists', { role: 'list' });
   root.append(
-    h('div.brand', h('span.brand-mark', '♪'), h('span.brand-name', 'utawakuwaku'), h('span.brand-ver', 'v2')),
+    h('div.brand', h('span.brand-mark', '♪'), h('span.brand-name', 'utawakuwaku'), h('span.brand-ver', 'v3')),
     h('button.btn.btn-primary.btn-block.side-add', { type: 'button', onclick: () => openAddModal() }, icon('plus'), ' 曲・リストを追加'),
     nav,
     h('div.side-section-head', h('span', 'プレイリスト'),
@@ -40,10 +40,13 @@ export function mountSidebar(root) {
     const libCount = store.librarySongs().length;
     nav.replaceChildren(
       navItem('library', 'ライブラリ', 'library', libCount),
+      navItem('archive', '配信アーカイブ', 'timeline'),
       navItem('history', '再生履歴', 'history'),
       navItem('queue', 'キュー', 'queue', queueCount || null),
       navItem('bank', 'バンク（共有・サンプル）', 'bank'),
-      navItem('stats', '統計', 'star')
+      navItem('stats', '統計', 'star'),
+      h('button.side-item.side-fun', { type: 'button', onclick: () => { closeDrawer(); import('./quiz.js').then(m => m.openQuizSetup()); } }, icon('game'), h('span.side-label', 'イントロクイズ')),
+      h('button.side-item.side-fun', { type: 'button', onclick: () => { closeDrawer(); actions.playRadio(); } }, icon('radio'), h('span.side-label', 'おまかせラジオ'))
     );
     plList.replaceChildren(...store.playlists().map(pl => {
       const active = state.ui.view === 'playlist' && pl.id === state.data.currentId;

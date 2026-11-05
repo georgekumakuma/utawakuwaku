@@ -35,7 +35,7 @@
     load(p, auto) {
       const { videoId, startSeconds = 0, endSeconds = null } = p;
       this.videoId = videoId;
-      this.dur = cfg().durations[videoId] ?? 36000;
+      this.dur = cfg().durations[videoId] ?? (cfg().defaultDuration || 36000);
       this.cur = startSeconds;
       this.endSeconds = endSeconds;
       this.log.push(['load', videoId, startSeconds, endSeconds, auto]);

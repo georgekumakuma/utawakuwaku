@@ -30,7 +30,8 @@ export function mountEditor(root) {
   const tlStart = h('div.tl-handle.tl-start', { title: '開始（ドラッグ）' });
   const tlEnd = h('div.tl-handle.tl-end', { title: '終了（ドラッグ）' });
   const tlHead = h('div.tl-playhead');
-  const tlTrack = h('div.tl-track', tlRange, tlStart, tlEnd, tlHead);
+  const tlGhosts = h('div.tl-ghosts');
+  const tlTrack = h('div.tl-track', tlGhosts, tlRange, tlStart, tlEnd, tlHead);
   const tlLabelL = h('span', '0:00');
   const tlLabelR = h('span', '—');
   const tlHint = h('div.tl-hint', '');
@@ -234,7 +235,7 @@ export function mountEditor(root) {
   }
 
   function timelineDuration() {
-    const d = playerDuration();
+    const d = playerDuration() || store.videoDuration(draft.videoId);
     if (d > 0) return d;
     return Math.max(draft.end, draft.start) + 60;
   }
@@ -254,7 +255,23 @@ export function mountEditor(root) {
     tlEnd.style.left = r + '%';
     tlLabelR.textContent = playerDuration() ? formatTime(dur) : '動画未読み込み';
     timeline.classList.toggle('no-duration', !playerDuration());
+    renderGhosts(dur);
     tlHint.textContent = `${formatTime(draft.start)} → ${hasValidEnd(draft) ? formatTime(draft.end) : '最後'}`;
+  }
+
+  // 同じ動画に登録済みの他の曲を、タイムライン上に薄く表示（クリックでその曲を編集）
+  function renderGhosts(dur) {
+    if (!draft || !draft.videoId) { tlGhosts.replaceChildren(); return; }
+    const others = store.librarySongs().map(x => x.song).filter(x => x.videoId === draft.videoId && x.id !== editingId);
+    tlGhosts.replaceChildren(...others.map(o => {
+      const end = hasValidEnd(o) ? o.end : Math.min(dur, o.start + 30);
+      const g = h('button.tl-ghost', {
+        type: 'button', title: `${o.title}（${formatTime(o.start)}〜${hasValidEnd(o) ? formatTime(o.end) : '最後'}）をクリックで編集`,
+        style: { left: `${Math.min(100, (o.start / dur) * 100)}%`, width: `${Math.max(0.4, ((end - o.start) / dur) * 100)}%` }
+      });
+      g.addEventListener('click', (ev) => { ev.stopPropagation(); actions.openEditor(o.id); });
+      return g;
+    }));
   }
 
   function renderTargets() {

@@ -6,7 +6,8 @@ import { state, commit } from '../core/store.js';
 import * as store from '../core/store.js';
 import * as actions from '../app/actions.js';
 import { ctx } from '../app/context.js';
-import { applyTheme, ACCENTS } from './theme.js';
+import { ACCENTS } from './theme.js';
+import { refreshColors } from './ambient.js';
 import { toastSuccess } from './toast.js';
 import { setWakeLockWanted } from '../app/wakelock.js';
 
@@ -23,10 +24,10 @@ function toggle(key, onChange) {
 export function openSettings() {
   const e = ctx.engine;
   const themeSel = h('select.select', ...[['dark', 'ダーク'], ['light', 'ライト'], ['auto', 'OSに合わせる']].map(([v, l]) => h('option', { value: v, selected: state.settings.theme === v }, l)));
-  themeSel.addEventListener('change', () => { store.setSetting('theme', themeSel.value); applyTheme(); });
+  themeSel.addEventListener('change', () => { store.setSetting('theme', themeSel.value); refreshColors(); });
   const accents = h('div.accent-grid', ...Object.entries(ACCENTS).map(([k, a]) =>
     h('button.accent-dot', { type: 'button', title: a.label, class: state.settings.accent === k ? 'on' : '', style: { background: `linear-gradient(135deg, ${a.from}, ${a.to})` },
-      onclick: (ev) => { store.setSetting('accent', k); applyTheme(); ev.currentTarget.parentElement.querySelectorAll('.accent-dot').forEach(d => d.classList.toggle('on', d === ev.currentTarget)); } })));
+      onclick: (ev) => { store.setSetting('accent', k); refreshColors(); ev.currentTarget.parentElement.querySelectorAll('.accent-dot').forEach(d => d.classList.toggle('on', d === ev.currentTarget)); } })));
 
   const cf = h('input', { type: 'range', min: 0, max: 8, step: 0.5, value: state.settings.crossfade });
   const cfVal = h('span.mono', `${state.settings.crossfade}s`);
@@ -42,6 +43,8 @@ export function openSettings() {
     h('h4.settings-h', '外観'),
     row('テーマ', themeSel),
     row('アクセントカラー', accents),
+    row('曲に合わせて色を変える', toggle('artworkColor', () => refreshColors()), '再生中の曲のサムネイルから色を読み取り、アクセントカラーと背景の光に使います（オフでは上のアクセントカラーを使用）'),
+    row('オーロラ背景', toggle('aurora'), 'シアターモード・クイズの背景を動かします（動きを減らす設定の端末では自動で静止）'),
     row('コンパクトな行', toggle('compactRows'), '曲リストの行を詰めて表示'),
     h('h4.settings-h', '再生'),
     row('クロスフェード', h('div.range-row', cf, cfVal), '曲と曲のつなぎ目を重ねる秒数。0で重ねない'),
@@ -68,7 +71,7 @@ export function openSettings() {
     } }, icon('trash'), ' 消去')),
     h('h4.settings-h', 'YouTube Premium・広告について'),
     h('p.settings-note', 'このアプリはYouTube公式の埋め込みプレイヤーをそのまま使っています。広告が出るかどうかは、このブラウザがyoutube.comのログインCookieを埋め込みプレイヤーへ渡せるかで決まります。Premium会員なのに広告が出る場合は、ブラウザのCookie設定で「[*.]youtube.com」を常に許可してください（サードパーティCookieのブロックが原因です）。Electron版（.exe）はログインできないため、常に広告が表示されます。'),
-    h('p.settings-note.muted', `utawakuwaku v2 · ${ctx.isElectron ? 'Electron' : 'Browser'}${navigator.userAgent.includes('Mobile') ? ' · Mobile' : ''}`)
+    h('p.settings-note.muted', `utawakuwaku v3 · ${ctx.isElectron ? 'Electron' : 'Browser'}${navigator.userAgent.includes('Mobile') ? ' · Mobile' : ''}`)
   );
   openModal({ title: '設定', content, size: 'md' });
 }

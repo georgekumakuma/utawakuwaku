@@ -61,6 +61,15 @@ Holodex（Musicdex）との違いは明確で、向こうは「みんなのデ�
 > v2.1 で実装済み: 同じ曲の別バージョン表示、タグ候補、リンク切れチェック（＋再生エラー時の自動マーク）、
 > スリープタイマー（時間指定 / この曲の終わりで）、統計ビュー、曲ごとの音量補正。
 > v2.2 で実装済み: 共有バンク（Googleスプレッドシートの「ウェブに公開」URL などを登録、紹介リンク、最新版で更新、作者が紹介する「みんなの共有バンク」一覧）。
+> v3.0 で実装済み: シアターモード（オーロラ背景・FLIP で動画を移動・スマホの全画面プレイヤー）、アートワーク連動カラー、
+> イントロクイズ、おまかせラジオ、配信アーカイブ（タイムライン表示・すき間から登録）、どこでも貼り付け/ドロップ、ミニプレイヤーのジェスチャー、View Transitions。
+
+### v3 の設計メモ
+- **動画の iframe は DOM を移動しない**: iframe は親を付け替えると読み込み直しになるため、シアターモードでは `.stage-video` を CSS の `position: fixed` にして、枠の位置（`--tv-x/y/w/h`）へアニメーションさせている。祖先に `transform`・`filter`・重なり順の文脈（`isolation` / `z-index`）があると固定配置が効かないので、シアター中はそれらを外す
+- **アートワークの色**: `i.ytimg.com` のサムネイルを `crossOrigin="anonymous"` で読み、48×27 に縮小して画素を集計（`src/core/color.js`）。読めない環境では従来のアクセントカラーのまま。色は WCAG のコントラスト比 4.5 以上になるよう明度を調整
+- **オーロラ**: 160px 幅の小さなキャンバスに放射グラデーションを描き、CSS で拡大して柔らかく見せる（軽い）。`prefers-reduced-motion` では静止
+- **イントロクイズの試聴**は `_draft` の曲として再生するため、再生履歴・再生回数・OS のメディア表示には出ない（答えがばれない）
+- 音声そのもの（波形・音量・BPM）は YouTube の iframe から取得できないため、オーロラは再生状態と曲の切り替わりにだけ反応する
 
 ### Phase 2 — 「集める」をもっと楽に
 | 項目 | 内容 | 難易度 |
@@ -128,6 +137,9 @@ src/core/csv.js  setlist.js  share.js  time.js  ytid.js  storage.js
 src/player/yt.js      YouTube IFrame API ラッパー（Deck）
 src/player/engine.js  再生エンジン（2デッキ・トークン・キュー・先読み）
 src/ui/*.js           各コンポーネント（songlist = 仮想リスト, editor = 区間エディタ, …）
+src/ui/theater.js     シアターモード / aurora.js オーロラ / ambient.js アートワーク色 / quiz.js イントロクイズ / dropin.js 貼り付け・ドロップ
+src/core/color.js     色の抽出とコントラスト / quiz.js クイズの出題・採点 / intake.js 貼り付け内容の判定
+test/features.e2e.mjs v3 の体験機能の E2E（サムネイルもテスト用 PNG で代用）
 test/core.test.mjs    ユニットテスト（node --test）
 test/ui.e2e.mjs       UI の E2E（Playwright）
 test/engine.e2e.mjs   エンジンの E2E（YouTube API をモック）

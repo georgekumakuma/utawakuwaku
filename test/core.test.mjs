@@ -237,3 +237,127 @@ test('スプレッドシート貼り付け用 TSV', () => {
   assert.equal(lines[1].split('\t')[1], 'タブ を含む');
   assert.equal(csvToSongs(tsv.replace(/\t/g, ',')).length, 1);
 });
+
+import { pickPalette, accentFromColor, contrast, fromHex, rgbToHsl, hslToRgb, toHex } from '../src/core/color.js';
+
+function img(fills) {
+  // fills: [[r,g,b,count], ...] → RGBA 配列
+  const px = [];
+  for (const [r, g, b, n] of fills) for (let i = 0; i < n; i++) px.push(r, g, b, 255);
+  return new Uint8ClampedArray(px);
+}
+
+test('色: HSL 変換の往復', () => {
+  for (const hex of ['#ff0000', '#2f80ed', '#7c5cff', '#3ddc84', '#808080']) {
+    assert.equal(toHex(hslToRgb(...rgbToHsl(...fromHex(hex)))), hex);
+  }
+});
+
+test('色: サムネイルから代表色を選ぶ', () => {
+  const p = pickPalette(img([[220, 30, 40, 400], [30, 60, 220, 300], [128, 128, 128, 2000], [10, 10, 10, 1000]]));
+  assert.equal(p.length, 3);
+  const hues = p.map(x => Math.round(rgbToHsl(...fromHex(x))[0]));
+  assert.ok(hues[0] < 10 || hues[0] > 350, `主色は赤: ${hues}`);
+  assert.ok(Math.abs(hues[1] - 228) < 10, `2色目は青: ${hues}`);
+  assert.equal(pickPalette(img([[128, 128, 128, 500], [20, 20, 20, 500]])), null, 'モノクロは null');
+});
+
+test('色: アクセントは背景に対して読める明るさに調整される', () => {
+  for (const hex of ['#ffe600', '#0a1a6b', '#3ddc84', '#ff5c8a', '#4b0082']) {
+    const d = accentFromColor(hex, 'dark');
+    assert.ok(contrast(fromHex(d.accent), [14, 15, 20]) >= 4.5, `dark ${hex} → ${d.accent}`);
+    const l = accentFromColor(hex, 'light');
+    assert.ok(contrast(fromHex(l.accent), [244, 245, 249]) >= 4.5, `light ${hex} → ${l.accent}`);
+  }
+});
+
+import { radioPick, seededRandom } from '../src/core/insights.js';
+
+test('おまかせラジオ: 重み付き抽選', () => {
+  const now = Date.UTC(2026, 10, 5);
+  const mk = (id, vid, rating, extra = {}) => ({ song: normalizeSong({ id, videoId: vid, title: id, rating, ...extra }) });
+  const items = [
+    mk('hi', 'v0000000001', 6), mk('lo', 'v0000000002', 1),
+    mk('recent', 'v0000000003', 6, { lastPlayedAt: now - 60000, playCount: 3 }),
+    mk('broken', 'v0000000004', 6, { broken: 'missing' }),
+    mk('hi2', 'v0000000001', 6)
+  ];
+  const all = radioPick(items, 10, { now, rand: seededRandom('x') });
+  assert.equal(all.length, 4, 'リンク切れは除外、重複なし');
+  assert.ok(!all.some(it => it.song.id === 'broken'));
+  // 高評価・未再生の曲が、低評価や直前に聴いた曲より選ばれやすい
+  const counts = { hi: 0, lo: 0, recent: 0 };
+  for (let i = 0; i < 400; i++) {
+    const [first] = radioPick(items.slice(0, 3), 1, { now, rand: seededRandom('s' + i) });
+    counts[first.song.id]++;
+  }
+  assert.ok(counts.hi > counts.recent * 3, JSON.stringify(counts));
+  assert.ok(counts.hi > counts.lo * 5, JSON.stringify(counts));
+  // 同じ動画が連続しない
+  for (let i = 0; i < 50; i++) {
+    const seq = radioPick(items, 4, { now, rand: seededRandom('c' + i) });
+    for (let j = 1; j < seq.length; j++) {
+      if (seq[j].song.videoId === seq[j - 1].song.videoId) {
+        const others = seq.slice(j).some(x => x.song.videoId !== seq[j - 1].song.videoId);
+        assert.ok(!others, '避けられる連続は避ける');
+      }
+    }
+  }
+});
+
+import { buildQuiz, quizPool, scoreAnswer, quizStart, grade } from '../src/core/quiz.js';
+
+test('イントロクイズ: 出題', () => {
+  const mk = (t, extra = {}) => ({ song: normalizeSong({ videoId: 'abc12345678', title: t, start: 0, end: 60, ...extra }) });
+  const items = ['夜に駆ける', '夜に駆ける (cover)', 'ドライフラワー', '残酷な天使のテーゼ', '千本桜', 'マリーゴールド'].map(t => mk(t));
+  items.push(mk('壊れた', { broken: 'missing' }));
+  assert.equal(quizPool(items).length, 5, '同じ曲名・リンク切れは除外');
+  const q = buildQuiz(items, { count: 10, rand: seededRandom('q') });
+  assert.equal(q.length, 5, '曲数より多くは出題しない');
+  for (const x of q) {
+    assert.equal(x.choices.length, 4);
+    assert.ok(x.choices.includes(x.answer));
+    assert.equal(new Set(x.choices.map(c => c.song.title)).size, 4, '選択肢は重複しない');
+  }
+  assert.equal(new Set(q.map(x => x.answer.song.title)).size, 5, '同じ曲は2回出ない');
+  assert.throws(() => buildQuiz(items.slice(0, 3)), /4曲以上/);
+});
+
+test('イントロクイズ: 採点と開始位置', () => {
+  assert.deepEqual(scoreAnswer({ correct: false, elapsedMs: 100, limitMs: 10000, streak: 3 }), { points: 0, streak: 0 });
+  const fast = scoreAnswer({ correct: true, elapsedMs: 0, limitMs: 10000, streak: 0 });
+  const slow = scoreAnswer({ correct: true, elapsedMs: 9000, limitMs: 10000, streak: 0 });
+  assert.equal(fast.points, 1000);
+  assert.ok(slow.points < fast.points && slow.points >= 400);
+  assert.equal(scoreAnswer({ correct: true, elapsedMs: 0, limitMs: 10000, streak: 9 }).points, 1500, 'ボーナスは最大+50%');
+  const s = normalizeSong({ videoId: 'abc12345678', title: 'x', start: 100, end: 200 });
+  assert.equal(quizStart(s, 'start', 5), 100);
+  for (let i = 0; i < 30; i++) {
+    const at = quizStart(s, 'random', 5, seededRandom('r' + i));
+    assert.ok(at >= 101 && at <= 200 - 5 - 1, `${at}`);
+  }
+  assert.equal(quizStart(normalizeSong({ videoId: 'abc12345678', title: 'x', start: 10, end: 0 }), 'random', 5), 10, '終了未設定は頭から');
+  assert.equal(grade(1).label, 'PERFECT');
+  assert.equal(grade(0.1).label, 'C');
+});
+
+import { classifyText, tsvToCsv } from '../src/core/intake.js';
+
+test('貼り付けの判定', () => {
+  assert.equal(classifyText(''), null);
+  assert.equal(classifyText('こんにちは'), null);
+  assert.deepEqual(classifyText('https://youtu.be/uvNqgBWckp4?t=90'), { kind: 'url', url: 'https://youtu.be/uvNqgBWckp4?t=90' });
+  const setlist = classifyText('https://www.youtube.com/watch?v=uvNqgBWckp4\nセトリ\n0:12 曲A\n4:30 曲B / 歌手');
+  assert.equal(setlist.kind, 'setlist');
+  assert.equal(setlist.url, 'https://www.youtube.com/watch?v=uvNqgBWckp4');
+  assert.equal(classifyText('0:12 曲A\n4:30 曲B').url, '', 'URL なしのセットリスト');
+  assert.equal(classifyText('videoId,title,start,end\nuvNqgBWckp4,曲,1,2').kind, 'csv');
+  const tsv = classifyText('videoId\ttitle\tstart\tend\nuvNqgBWckp4\t曲, カンマ\t1\t2');
+  assert.equal(tsv.kind, 'csv');
+  assert.equal(csvToSongs(tsv.text)[0].title, '曲, カンマ', 'TSV は CSV に変換');
+  assert.equal(classifyText('https://docs.google.com/spreadsheets/d/e/2PACX-x/pubhtml').kind, 'bank');
+  assert.equal(classifyText('https://example.com/list.csv').kind, 'bank');
+  assert.equal(classifyText('https://example.com/page'), null);
+  assert.equal(classifyText('見て！ https://www.youtube.com/watch?v=uvNqgBWckp4 最高').kind, 'url', '文中の URL');
+  assert.equal(tsvToCsv('a\tb"c'), 'a,"b""c"');
+});
