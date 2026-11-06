@@ -26,6 +26,7 @@ import { openAddModal } from '../ui/addmodal.js';
 import { openAddBankDialog } from '../ui/sharedbank.js';
 import { mountAmbient, refreshColors } from '../ui/ambient.js';
 import { installDropIn } from '../ui/dropin.js';
+import { installExternalLinkGuard, showInAppBanner } from '../ui/external.js';
 
 function $(id) { return document.getElementById(id); }
 
@@ -151,6 +152,8 @@ async function main() {
   mountPlayerbar($('playerbar'));
   mountAmbient();
   installDropIn();
+  installExternalLinkGuard();
+  showInAppBanner();
   installShortcuts({ focusSearch: topbar.focusSearch, views, editor });
   $('splash').classList.add('hide');
   setTimeout(() => $('splash').remove(), 600);

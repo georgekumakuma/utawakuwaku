@@ -11,6 +11,7 @@ import { ctx } from './context.js';
 import { toast, toastError, toastSuccess } from '../ui/toast.js';
 import { confirmDialog, promptDialog } from '../ui/dialog.js';
 import { copyText, downloadText, datestamp } from '../ui/dom.js';
+import { openExternal } from '../ui/external.js';
 
 const engine = () => ctx.engine;
 
@@ -173,7 +174,7 @@ export async function moveSongsTo(targetPlaylistId, fromPlaylistId, songIds) {
 }
 
 export function openOnYouTube(song) {
-  window.open(watchUrl(song.videoId, song.start), '_blank', 'noopener');
+  openExternal(watchUrl(song.videoId, song.start), { label: 'YouTube' });
 }
 
 export async function copyYouTubeLink(song) {
