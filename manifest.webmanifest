@@ -1,0 +1,15 @@
+{
+  "name": "utawakuwaku 〜うたわくわく！〜",
+  "short_name": "utawakuwaku",
+  "description": "YouTube動画の区間を曲として登録し、プレイリストで連続再生する歌枠プレイヤー",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0e0f14",
+  "theme_color": "#0e0f14",
+  "lang": "ja",
+  "icons": [
+    { "src": "./icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
