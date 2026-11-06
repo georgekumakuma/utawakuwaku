@@ -1,0 +1,11 @@
+# Netlify の公開設定（GitHub と連携したとき、この内容が自動で使われる）
+[build]
+  # ビルドは不要。リポジトリのルートをそのまま公開する
+  publish = "."
+  command = ""
+
+# Service Worker は毎回最新を確認させる（更新がすぐ届くように）
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
