@@ -158,7 +158,8 @@ const waitFor = (page, fn, arg, timeout = 8000) => page.waitForFunction(fn, arg,
   });
 
   await test('イントロクイズ: 5問を解いて結果・ハイスコア・間違えた曲のプレイリスト', async () => {
-    await page.locator('.side-item', { hasText: 'イントロクイズ' }).click();
+    // イントロクイズは現在メニューから非表示（コードは残している）
+    await page.evaluate(() => import('/src/ui/quiz.js').then(m => m.openQuizSetup()));
     await page.locator('.seg-btn', { hasText: '5問' }).click();
     await page.locator('.seg-btn', { hasText: '3秒' }).click();
     await page.locator('.modal-footer .btn-primary').click();
