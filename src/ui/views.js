@@ -16,6 +16,7 @@ import { openAddBankDialog, loadSharedPlaylist, removeSharedBank, copyBankLink, 
 import { toast, toastError, toastSuccess } from './toast.js';
 import { confirmDialog } from './dialog.js';
 import { openAddModal } from './addmodal.js';
+import { openExternal } from './external.js';
 import { normalizeTitle, computeStats } from '../core/insights.js';
 
 const SORTS = [
@@ -369,7 +370,7 @@ export function mountViews(root) {
       const menu = [
         { label: '紹介リンクをコピー', icon: 'share', onClick: () => copyBankLink(b) },
         { label: '公開URLをコピー', icon: 'link', onClick: async () => { const ok = await copyText(b.url); toast(ok ? 'URLをコピーしました' : 'コピーできませんでした'); } },
-        { label: '公開元を開く', icon: 'external', onClick: () => window.open(b.url, '_blank', 'noopener') },
+        { label: '公開元を開く', icon: 'external', onClick: () => openExternal(b.url, { label: '公開元' }) },
         'sep',
         { label: '一覧から外す', icon: 'trash', danger: true, onClick: () => removeSharedBank(b) }
       ];
@@ -511,7 +512,7 @@ export function mountViews(root) {
             } },
             { label: 'この配信の曲で新しいプレイリスト', icon: 'library', onClick: () => actions.importSongs(g.songs.map(x => ({ ...x.song, id: undefined })), { mode: 'new', name: g.title || '配信' }) },
             'sep',
-            { label: 'YouTubeで開く', icon: 'external', onClick: () => window.open(`https://www.youtube.com/watch?v=${g.videoId}`, '_blank', 'noopener') }
+            { label: 'YouTubeで開く', icon: 'external', onClick: () => openExternal(`https://www.youtube.com/watch?v=${g.videoId}`, { label: 'YouTube' }) }
           ], { anchor: e.currentTarget }) }, icon('more')))
       ));
     }

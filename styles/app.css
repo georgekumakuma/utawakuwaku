@@ -1138,3 +1138,27 @@ body.th-anim .stage-video { transition: left .55s cubic-bezier(.2, .8, .2, 1), t
 .th-back:hover { background: rgba(255, 255, 255, .22); transform: translateX(-2px); }
 .th-back .ic { width: 22px; height: 22px; }
 .th-brand { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; color: var(--t-dim); margin-left: 6px; }
+
+/* ===== アプリ内ブラウザ（X など）: 外部リンクの選択と案内バー ===== */
+.ext-warn { margin: 0 0 12px; line-height: 1.6; }
+.ext-choices { display: flex; flex-direction: column; gap: 8px; }
+.ext-choice { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; border-radius: 12px; text-align: left; background: var(--bg-3); border: 1px solid var(--border-2); color: var(--text); }
+.ext-choice:hover { border-color: var(--accent); }
+.ext-choice.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink, #fff); }
+.ext-choice .ic { width: 22px; height: 22px; flex: none; }
+.ext-choice-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ext-choice-text small { opacity: .75; font-size: 12px; }
+.ext-hint { margin: 12px 0 6px; font-size: 12px; color: var(--text-3); line-height: 1.6; }
+.ext-url { display: block; font-size: 11px; color: var(--text-3); word-break: break-all; }
+:root { --inapp-h: 0px; }
+body.has-inapp-bar { --inapp-h: 40px; }
+body.has-inapp-bar .app { height: calc(100dvh - var(--inapp-h)); min-height: 0; margin-top: var(--inapp-h); }
+.inapp-bar { position: fixed; top: 0; left: 0; right: 0; height: 40px; z-index: 160; display: flex; align-items: center; gap: 8px; padding: 0 6px 0 12px; background: var(--bg-3); border-bottom: 1px solid var(--border-2); font-size: 12px; color: var(--text-2); }
+.inapp-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inapp-open { flex: none; padding: 6px 12px; border-radius: 999px; background: var(--accent); color: var(--accent-ink, #fff); font-weight: 700; font-size: 12px; }
+.inapp-close { flex: none; display: grid; place-items: center; width: 32px; height: 32px; color: var(--text-3); }
+.inapp-close .ic { width: 18px; height: 18px; }
+body.has-inapp-bar .theater { top: var(--inapp-h); }
+body.has-inapp-bar .sidebar { top: var(--inapp-h); }
+@media (max-width: 1180px) { body.has-inapp-bar.panel-open .panel { top: var(--inapp-h); } }
+@media (max-width: 820px) { body.has-inapp-bar .toast-host { top: calc(var(--inapp-h) + 8px); } }

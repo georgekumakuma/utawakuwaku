@@ -7,7 +7,7 @@
     "start": "electron .",
     "serve": "node server.js",
     "test": "node --test test/core.test.mjs",
-    "test:e2e": "node test/ui.e2e.mjs && node test/engine.e2e.mjs && node test/features.e2e.mjs && node test/trim.e2e.mjs && node test/discover.e2e.mjs",
+    "test:e2e": "node test/ui.e2e.mjs && node test/engine.e2e.mjs && node test/features.e2e.mjs && node test/trim.e2e.mjs && node test/discover.e2e.mjs && node test/inapp.e2e.mjs",
     "pack": "electron-builder --dir",
     "dist": "electron-builder"
   },

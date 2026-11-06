@@ -93,7 +93,6 @@ export function openTheater() {
       h('button.th-back', { type: 'button', title: '通常の表示に戻る (Esc / T)', onclick: () => closeTheater() }, icon('chevronLeft'), h('span', '通常表示に戻る')),
       h('div.th-top-actions',
         h('button.th-btn', { type: 'button', title: '映像を隠す/表示 (V)', onclick: () => store.setSetting('showVideo', !state.settings.showVideo) }, icon('video')),
-        h('button.th-btn', { type: 'button', title: 'YouTubeで開く', onclick: () => { const s = e.state.song; if (s) actions.openOnYouTube(s); } }, icon('external')),
         h('span.th-brand', h('span.brand-mark', '♪'), h('span.th-brand-name', ' utawakuwaku')))),
     h('div.th-main',
       slot,
