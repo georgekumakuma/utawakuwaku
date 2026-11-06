@@ -118,7 +118,6 @@ function showWhatsNew() {
     h('p', '聴く・遊ぶ・眺める、がもっと楽しくなりました。'),
     h('div.whatsnew-grid',
       card('theater', 'シアターモード', '曲の色に染まるオーロラの中で、画面いっぱいに。スマホではミニプレイヤーをタップ', 'T キーで開く', () => import('../ui/theater.js').then(x => x.openTheater())),
-      card('game', 'イントロクイズ', '数秒聴いて4択で曲名当て。コンボとハイスコアつき', '遊んでみる', () => import('../ui/quiz.js').then(x => x.openQuizSetup())),
       card('radio', 'おまかせラジオ', '評価が高い曲・しばらく聴いていない曲を中心に自動選曲', '再生する', () => actions.playRadio()),
       card('timeline', '配信アーカイブ', '配信ごとに、登録した曲をタイムラインで一望。すき間をクリックで追加', '開く', () => store.setView('archive'))
     ),

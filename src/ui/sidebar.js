@@ -46,7 +46,6 @@ export function mountSidebar(root) {
       navItem('queue', 'キュー', 'queue', queueCount || null),
       navItem('bank', 'バンク（共有・サンプル）', 'bank'),
       navItem('stats', '統計', 'star'),
-      h('button.side-item.side-fun', { type: 'button', onclick: () => { closeDrawer(); import('./quiz.js').then(m => m.openQuizSetup()); } }, icon('game'), h('span.side-label', 'イントロクイズ')),
       h('button.side-item.side-fun', { type: 'button', onclick: () => { closeDrawer(); actions.playRadio(); } }, icon('radio'), h('span.side-label', 'おまかせラジオ'))
     );
     plList.replaceChildren(...store.playlists().map(pl => {
