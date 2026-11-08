@@ -5,6 +5,7 @@ const NAMED = [
   [/Twitter|TwitterAndroid|\bX\/\d/i, 'X'],
   [/\bLine\//i, 'LINE'],
   [/Instagram/i, 'Instagram'],
+  [/Barcelona/i, 'Threads'],
   [/FBAN|FBAV|FB_IAB|FBIOS/i, 'Facebook'],
   [/musical_ly|TikTok|BytedanceWebview|ByteLocale/i, 'TikTok'],
   [/KAKAOTALK/i, 'KakaoTalk'],
@@ -54,4 +55,48 @@ export function youtubeAppUrl(url, platform) {
   if (platform === 'android') return androidIntent(url, 'com.google.android.youtube');
   if (platform === 'ios') return `youtube://${u.host}${u.pathname}${u.search}`;
   return null;
+}
+
+// ===== アプリごとの「外へ出る」方法 =====
+// X・TikTok などは、アプリ内ブラウザから他のアプリ（Chrome・YouTube）を開く操作を受け付けず、
+// 「アプリケーションを開く方法がありません」などのエラーになる。そうしたアプリではボタンを出さず、
+// アプリ自身のメニュー（「ブラウザで開く」）を案内する。
+//   'param'  … URL に openExternalBrowser=1 を付けると外部ブラウザで開く（LINE 公式の仕組み）
+//   'intent' … Android の intent:// で Chrome / YouTube アプリに渡せる
+//   'guide'  … 確実な方法がない。メニューからの開き方を案内する
+const NO_HANDOFF = new Set(['X', 'TikTok']);
+
+export function escapeRoute(info) {
+  if (!info) return null;
+  if (info.name === 'LINE') return 'param';
+  if (NO_HANDOFF.has(info.name)) return 'guide';
+  if (info.platform === 'android') return 'intent';
+  return 'guide';
+}
+
+/** LINE で外部ブラウザを開かせる URL（openExternalBrowser=1 を付ける） */
+export function withExternalParam(url) {
+  const u = new URL(url);
+  u.searchParams.set('openExternalBrowser', '1');
+  return u.href;
+}
+
+/** アプリのメニューから普通のブラウザで開く手順（各アプリの画面は変わることがあるので目安） */
+export function menuSteps(info) {
+  const ios = info && info.platform === 'ios';
+  const browser = ios ? 'Safari' : 'ブラウザ';
+  switch (info && info.name) {
+    case 'X': return ios
+      ? ['画面の右上（または右下）にある「…」や共有ボタンを押す', '「Safariで開く」（または「ブラウザで開く」）を選ぶ']
+      : ['画面の右上にある「⋮」を押す', '「ブラウザで開く」を選ぶ'];
+    case 'LINE': return ios
+      ? ['画面の右上（または右下）にある「…」や共有ボタンを押す', '「Safariで開く」を選ぶ']
+      : ['画面の右上にある「⋮」を押す', '「他のアプリで開く」→ Chrome を選ぶ'];
+    case 'Instagram': case 'Threads': case 'Facebook':
+      return ['画面の右上にある「…」（または「⋮」）を押す', `「外部ブラウザで開く」（または「${browser}で開く」）を選ぶ`];
+    case 'TikTok':
+      return ['画面の右上にある「…」を押す', `「${browser}で開く」を選ぶ`];
+    default:
+      return ['画面のメニュー（「…」「⋮」や共有ボタン）を押す', `「${browser}で開く」「ブラウザで開く」を選ぶ`];
+  }
 }

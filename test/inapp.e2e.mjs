@@ -19,6 +19,8 @@ async function test(name, fn) {
   catch (e) { failed++; results.push(`FAIL ${name}\n     ${e.message.slice(0, 400)}`); }
 }
 
+const IG_ANDROID = 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/AP1A; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/124.0.0.0 Mobile Safari/537.36 Instagram 300.0.0.0 Android';
+const LINE_ANDROID = 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/AP1A; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/124.0.0.0 Mobile Safari/537.36 Line/14.3.0/IAB';
 const X_ANDROID = 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/AP1A; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/124.0.0.0 Mobile Safari/537.36 TwitterAndroid';
 
 async function openApp(opts) {
@@ -29,7 +31,8 @@ async function openApp(opts) {
   page.on('console', m => { if (m.type() === 'error' && !/youtube\.com|fonts\.g|net::ERR|Failed to load resource|status of 4\d\d/.test(m.text())) errors.push(`[console] ${m.text()}`); });
   // 移動・ポップアップを記録して止める
   await page.addInitScript({ content: `
-    window.__nav = [];
+    window.__nav = []; window.__copied = [];
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (t) => { window.__copied.push(t); } } });
     window.open = (u) => { window.__nav.push(['open', String(u)]); return null; };
     const click = HTMLAnchorElement.prototype.click;
     HTMLAnchorElement.prototype.click = function () { window.__nav.push(['go', this.href]); };
@@ -48,19 +51,25 @@ const playFirst = (page) => page.evaluate(() => { const pl = window.__uta.store.
   const { ctx, page } = await openApp({ userAgent: X_ANDROID, viewport: { width: 390, height: 780 }, isMobile: true, hasTouch: true });
   const sleep = (ms) => page.waitForTimeout(ms);
 
-  await test('X のアプリ内ブラウザ: 上部に「Chromeで開く」案内（閉じるとこのセッション中は出ない）', async () => {
+  await test('X: 失敗するボタンは出さず、上部の案内から「ブラウザで開く」手順とURLコピーを示す', async () => {
     const bar = page.locator('.inapp-bar');
-    assert.match(await bar.innerText(), /Xのアプリ内ブラウザ[\s\S]*Chromeで開く/);
+    assert.match(await bar.innerText(), /Xのアプリ内ブラウザ[\s\S]*ブラウザで開くには/);
+    assert.doesNotMatch(await bar.innerText(), /Chromeで開く/);
     const appTop = await page.locator('.app').evaluate(el => el.getBoundingClientRect().top);
     assert.equal(appTop, 40, 'アプリ本体は案内の下から始まる');
     await page.screenshot({ path: `${OUT}/inapp-banner.png` });
     await bar.locator('.inapp-open').click();
-    const nav = await page.evaluate(() => window.__nav);
-    assert.match(nav.at(-1)[1], /^intent:\/\/.*#Intent;scheme=http;package=com\.android\.chrome;end$/);
-    assert.doesNotMatch(nav.at(-1)[1], /fallback/);
+    await page.waitForSelector('.escape-guide');
+    assert.deepEqual(await page.evaluate(() => window.__nav), [], 'intent など失敗する移動はしない');
+    assert.match(await page.locator('.escape-guide').innerText(), /⋮[\s\S]*ブラウザで開く[\s\S]*URLをコピー/);
+    await page.screenshot({ path: `${OUT}/inapp-escape-guide.png` });
+    await page.locator('.escape-guide .ext-choice').click();
+    assert.equal(await page.evaluate(() => window.__copied.at(-1)), srv.base + '/index.html');
+    await page.keyboard.press('Escape');
+    await sleep(300);
   });
 
-  await test('「YouTubeで開く」は直接移動せず、アプリで開く／Chrome／コピーを選ぶ画面を出す', async () => {
+  await test('X: 「YouTubeで開く」はアプリやChromeを開くボタンを出さず、コピーとメニューの手順を案内', async () => {
     await playFirst(page);
     await sleep(600);
     await page.evaluate(() => { window.__nav = []; });
@@ -69,12 +78,11 @@ const playFirst = (page) => page.evaluate(() => { const pl = window.__uta.store.
     assert.deepEqual(await page.evaluate(() => window.__nav), [], 'window.open もページ移動もしない');
     const text = await page.locator('.ext-modal').innerText();
     assert.match(text, /X のアプリ内ブラウザ[\s\S]*戻れなくなる/);
-    assert.match(text, /YouTube アプリで開く[\s\S]*Chrome で開く[\s\S]*リンクをコピー/);
+    assert.doesNotMatch(text, /YouTube アプリで開く|Chrome で開く/);
+    assert.match(text, /リンクをコピー[\s\S]*他のアプリを直接開けません[\s\S]*ブラウザで開く/);
     await page.screenshot({ path: `${OUT}/inapp-chooser.png` });
-    await page.locator('.ext-choice', { hasText: 'YouTube アプリで開く' }).click();
-    const nav = await page.evaluate(() => window.__nav);
-    assert.equal(nav.length, 1, JSON.stringify(nav));
-    assert.match(nav[0][1], /^intent:\/\/www\.youtube\.com\/watch\?v=[\w-]{11}(&t=\d+s)?#Intent;scheme=https;package=com\.google\.android\.youtube;end$/);
+    await page.locator('.ext-choice', { hasText: 'リンクをコピー' }).click();
+    assert.match(await page.evaluate(() => window.__copied.at(-1)), /^https:\/\/www\.youtube\.com\/watch\?v=/);
     await sleep(300);
     assert.equal(await page.locator('.ext-modal').count(), 0);
   });
@@ -97,6 +105,41 @@ const playFirst = (page) => page.evaluate(() => { const pl = window.__uta.store.
     assert.deepEqual(await page.evaluate(() => window.__nav), []);
     assert.match(await page.locator('.ext-modal .modal-title').innerText(), /YouTube 利用規約/);
     await page.locator('.ext-choice', { hasText: 'リンクをコピー' }).click().catch(() => {});
+  });
+  await ctx.close();
+}
+
+{
+  const { ctx, page } = await openApp({ userAgent: IG_ANDROID, viewport: { width: 390, height: 780 }, isMobile: true, hasTouch: true });
+  await test('Instagram(Android): Chrome・YouTube アプリへ intent で渡す（失敗時の移動先なし）', async () => {
+    await page.locator('.inapp-bar .inapp-open', { hasText: 'Chromeで開く' }).click();
+    let nav = await page.evaluate(() => window.__nav);
+    assert.match(nav.at(-1)[1], /^intent:\/\/.*#Intent;scheme=http;package=com\.android\.chrome;end$/);
+    assert.doesNotMatch(nav.at(-1)[1], /fallback/);
+    await playFirst(page);
+    await page.waitForTimeout(600);
+    await page.evaluate(() => { window.__nav = []; });
+    await page.locator('.np-actions button[title="YouTubeで開く"]').click();
+    await page.waitForSelector('.ext-modal');
+    assert.match(await page.locator('.ext-modal').innerText(), /YouTube アプリで開く[\s\S]*Chrome で開く[\s\S]*リンクをコピー/);
+    await page.locator('.ext-choice', { hasText: 'YouTube アプリで開く' }).click();
+    nav = await page.evaluate(() => window.__nav);
+    assert.equal(nav.length, 1, JSON.stringify(nav));
+    assert.match(nav[0][1], /^intent:\/\/www\.youtube\.com\/watch\?v=[\w-]{11}(&t=\d+s)?#Intent;scheme=https;package=com\.google\.android\.youtube;end$/);
+  });
+  await ctx.close();
+}
+
+{
+  const { ctx, page } = await openApp({ userAgent: LINE_ANDROID, viewport: { width: 390, height: 780 }, isMobile: true, hasTouch: true });
+  await test('LINE: 公式の openExternalBrowser=1 で外部ブラウザへ。戻ってきた URL からは目印を消す', async () => {
+    const reqs = [];
+    page.on('request', r => { if (r.isNavigationRequest()) reqs.push(r.url()); });
+    assert.match(await page.locator('.inapp-bar').innerText(), /LINEのアプリ内ブラウザ[\s\S]*ブラウザで開く/);
+    await page.locator('.inapp-bar .inapp-open').click();
+    await page.waitForFunction(() => window.__uta && window.__uta.engine.ready, null, { timeout: 20000 });
+    assert.ok(reqs.some(u => u.endsWith('/index.html?openExternalBrowser=1')), JSON.stringify(reqs));
+    assert.doesNotMatch(page.url(), /openExternalBrowser/);
   });
   await ctx.close();
 }

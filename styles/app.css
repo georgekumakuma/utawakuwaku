@@ -1162,3 +1162,8 @@ body.has-inapp-bar .theater { top: var(--inapp-h); }
 body.has-inapp-bar .sidebar { top: var(--inapp-h); }
 @media (max-width: 1180px) { body.has-inapp-bar.panel-open .panel { top: var(--inapp-h); } }
 @media (max-width: 820px) { body.has-inapp-bar .toast-host { top: calc(var(--inapp-h) + 8px); } }
+.ext-steps { margin: 4px 0 12px; padding-left: 22px; line-height: 1.7; }
+.ext-steps li { margin: 2px 0; }
+.ext-guide .ext-hint { margin-bottom: 4px; }
+/* スマホ: モーダル表示中はトーストを下に（上寄せのモーダルの見出しを隠さない） */
+@media (max-width: 820px) { body.modal-open .toast-host { top: auto; bottom: calc(var(--bar-h) + 10px); } }
