@@ -13,7 +13,7 @@ import { mountPanel } from '../ui/panel.js';
 import { mountPlayerbar } from '../ui/playerbar.js';
 import { installShortcuts } from '../ui/shortcuts.js';
 import { applyTheme, watchSystemTheme } from '../ui/theme.js';
-import { decodeShare } from '../core/share.js';
+import { shareHashOf } from '../core/share.js';
 import { toast, toastError, toastSuccess } from '../ui/toast.js';
 import { confirmDialog, openModal } from '../ui/dialog.js';
 import { h, icon } from '../ui/dom.js';
@@ -76,18 +76,10 @@ async function importFromHash() {
     openAddBankDialog(url);
     return true;
   }
-  if (!location.hash || !/^#pl2?u?=/.test(location.hash)) return false;
-  const hash = location.hash;
+  const hash = shareHashOf(location.hash);
+  if (!hash) return false;
   history.replaceState(null, '', location.pathname + location.search);
-  const shared = await decodeShare(hash);
-  if (!shared || !shared.songs.length) { toastError('共有URLを読み込めませんでした'); return false; }
-  const name = shared.name || '共有プレイリスト';
-  const ok = await confirmDialog(`共有されたプレイリスト「${name}」（${shared.songs.length}曲）を取り込みますか？\n新しいプレイリストとして追加されます。`, { title: '共有プレイリスト', okLabel: '取り込む' });
-  if (!ok) return false;
-  const pl = store.createPlaylist(name, shared.songs, { source: 'share' });
-  store.setView('playlist');
-  toastSuccess(`「${pl.name}」を取り込みました`);
-  return true;
+  return actions.importSharedHash(hash);
 }
 
 function showWelcome() {
@@ -231,9 +223,11 @@ async function main() {
   listBankPresets().then(b => { state.ui.bank = b; commit('ui'); });
 
   // 共有URL
-  const imported = await importFromHash();
-  if (!imported && !state.settings.seenWelcome) showWelcome();
-  else if (!imported && !state.settings.seenV3) showWhatsNew();
+  // 確認ダイアログの返事を待たずにプレイヤーの準備を進める
+  const fromLink = !!shareHashOf(location.hash) || location.hash.startsWith('#bank=');
+  importFromHash();
+  if (!fromLink && !state.settings.seenWelcome) showWelcome();
+  else if (!fromLink && !state.settings.seenV3) showWhatsNew();
 
   // YouTube プレイヤー
   try {
