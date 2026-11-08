@@ -6,6 +6,7 @@ import * as store from '../core/store.js';
 import { state } from '../core/store.js';
 import { inspectSharedUrl, fetchSharedSongs, fetchBankCSV } from '../app/bank.js';
 import { normalizeBankUrl, TEMPLATE_CSV, songsToTSV } from '../core/sharedbank.js';
+import { shareHashOf } from '../core/share.js';
 import { toast, toastError, toastSuccess } from './toast.js';
 
 // ===== 操作 =====
@@ -136,6 +137,15 @@ export function openAddBankDialog(initialUrl = '') {
     inspected = null;
     setAddEnabled(false);
     nameField.style.display = 'none';
+    const shareHash = shareHashOf(url);
+    if (shareHash) {
+      // プレイリストの共有URL（#p3= など）はバンクではないので、プレイリストとして取り込む案内を出す
+      result.replaceChildren(
+        h('div.inspect-ok', icon('check'), ' プレイリストの共有URLです'),
+        h('div.hint', 'これはバンク（公開されたファイル）ではなく、プレイリストそのものを含んだURLです。バンクには登録できませんが、そのまま新しいプレイリストとして取り込めます。'),
+        h('div.btn-row', h('button.btn.btn-primary', { type: 'button', onclick: () => { modal.close(); import('../app/actions.js').then(a => a.importSharedHash(shareHash)); } }, icon('download'), ' プレイリストとして取り込む')));
+      return;
+    }
     if (!normalizeBankUrl(url)) { result.replaceChildren(h('div.form-error', 'https:// で始まる URL を貼り付けてください')); return; }
     const existing = store.bankByUrl(url);
     result.replaceChildren(h('div.hint', '読み込み中…'));

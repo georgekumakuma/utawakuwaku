@@ -1,7 +1,7 @@
 // Service Worker: アプリ本体（HTML/CSS/JS/同梱CSV）をキャッシュし、オフラインでも起動できるようにする。
 // YouTube 関連（youtube.com / ytimg.com）はキャッシュしない。
 
-const VERSION = 'utawakuwaku-v3.3.0';
+const VERSION = 'utawakuwaku-v3.4.0';
 const SHELL = [
   './', './index.html', './styles/app.css', './manifest.webmanifest', './icon.png',
   './src/app/app.js', './src/app/actions.js', './src/app/config.js', './src/app/ytapi.js', './src/app/bank.js', './src/app/context.js', './src/app/songmenu.js', './src/app/tracklookup.js', './src/app/wakelock.js',

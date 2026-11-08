@@ -3,14 +3,16 @@
 import * as store from '../core/store.js';
 import { state, commit } from '../core/store.js';
 import { songsToCSV, csvToSongs } from '../core/csv.js';
+import { songsToTSV } from '../core/sharedbank.js';
 import { songsToSetlist } from '../core/setlist.js';
-import { encodeShare, buildShareUrl } from '../core/share.js';
+import { encodeShare, decodeShare, buildShareUrl } from '../core/share.js';
+import { fetchVideoInfo } from '../player/yt.js';
 import { cloneSong, hasValidEnd, normalizeSong } from '../core/model.js';
 import { watchUrl } from '../core/ytid.js';
 import { ctx } from './context.js';
 import { toast, toastError, toastSuccess } from '../ui/toast.js';
-import { confirmDialog, promptDialog } from '../ui/dialog.js';
-import { copyText, downloadText, datestamp } from '../ui/dom.js';
+import { confirmDialog, promptDialog, openModal } from '../ui/dialog.js';
+import { h, copyText, downloadText, datestamp } from '../ui/dom.js';
 import { openExternal } from '../ui/external.js';
 
 const engine = () => ctx.engine;
@@ -222,20 +224,75 @@ export function duplicatePlaylist(playlistId) {
   toastSuccess(`「${copy.name}」を作成しました`);
 }
 
+// これより長い共有URLは、SNS やチャットによっては貼れない・途中で切れることがある
+export const SHARE_URL_SOFT_LIMIT = 2000;
+
 export async function sharePlaylist(playlistId) {
   const pl = store.playlistById(playlistId);
   if (!pl || !pl.songs.length) { toast('プレイリストが空です'); return; }
+  let url;
   try {
-    const hash = await encodeShare({ name: pl.name, songs: pl.songs });
-    const url = buildShareUrl(hash);
-    if (navigator.share && ctx.isTouch) {
-      try { await navigator.share({ title: `utawakuwaku: ${pl.name}`, url }); return; } catch { /* fallthrough */ }
-    }
-    const ok = await copyText(url);
-    toast(ok ? `共有URLをコピーしました（${Math.round(url.length / 1024 * 10) / 10}KB）。開くとプレイリストを取り込めます` : 'コピーできませんでした', { duration: 4000 });
+    url = buildShareUrl(await encodeShare({ name: pl.name, songs: pl.songs }));
   } catch (e) {
     toastError('共有URLを作成できませんでした: ' + e.message);
+    return;
   }
+  if (url.length > SHARE_URL_SOFT_LIMIT) { openLongShareDialog(pl, url); return; }
+  if (navigator.share && ctx.isTouch) {
+    try { await navigator.share({ title: `utawakuwaku: ${pl.name}`, url }); return; } catch { /* fallthrough */ }
+  }
+  const ok = await copyText(url);
+  toast(ok ? `共有URLをコピーしました（${url.length.toLocaleString()}文字）。開くと、このプレイリストを取り込めます` : 'コピーできませんでした', { duration: 4000 });
+}
+
+function openLongShareDialog(pl, url) {
+  const copy = async (text, msg) => { const ok = await copyText(text); toast(ok ? msg : 'コピーできませんでした', { duration: 3500 }); };
+  const content = h('div.share-long',
+    h('p', `「${pl.name}」（${pl.songs.length}曲）の共有URLは ${url.length.toLocaleString()} 文字あります。X や LINE などでは、長すぎて貼れなかったり、途中で切れて開けなくなったりすることがあります。`),
+    h('ul.share-long-tips',
+      h('li', h('b', 'プレイリストを分ける'), ' — 20〜30曲ずつに分けると、多くの場合 2,000 文字以内に収まります'),
+      h('li', h('b', '共有バンクにする'), ' — Googleスプレッドシートに貼って「ウェブに公開」し、そのURL（短い）を共有します。「バンク」画面の「公開のしかた」に手順があります')),
+    h('code.ext-url', url.slice(0, 120) + '…'));
+  openModal({
+    title: '共有URLが長くなりました', content, size: 'sm',
+    actions: [
+      { label: 'スプレッドシート用にコピー', onClick: () => copy(songsToTSV(pl.songs), 'コピーしました。Googleスプレッドシートの A1 セルを選んで貼り付けてください') },
+      { label: 'それでもURLをコピー', primary: true, onClick: () => copy(url, `共有URLをコピーしました（${url.length.toLocaleString()}文字）`) }
+    ]
+  });
+}
+
+/** 共有URLの hash を読み込み、確認してから新しいプレイリストとして取り込む */
+export async function importSharedHash(hash) {
+  const shared = await decodeShare(hash);
+  if (!shared || !shared.songs.length) { toastError('共有URLを読み込めませんでした（URLが途中で切れている可能性があります）'); return false; }
+  const name = shared.name || '共有プレイリスト';
+  const ok = await confirmDialog(`共有されたプレイリスト「${name}」（${shared.songs.length}曲）を取り込みますか？\n新しいプレイリストとして追加されます。`, { title: '共有プレイリスト', okLabel: '取り込む' });
+  if (!ok) return false;
+  const pl = store.createPlaylist(name, shared.songs, { source: 'share' });
+  store.setView('playlist');
+  toastSuccess(`「${pl.name}」を取り込みました`);
+  fillArticles(pl.id);
+  return true;
+}
+
+/** 配信タイトル（article）が空の曲に、YouTube から動画タイトルを補う（共有URLは短くするため配信タイトルを含めない） */
+export async function fillArticles(playlistId) {
+  const pl = store.playlistById(playlistId);
+  if (!pl) return 0;
+  const ids = Array.from(new Set(pl.songs.filter(s => !s.article).map(s => s.videoId)));
+  const titles = new Map();
+  const worker = async () => {
+    while (ids.length) {
+      const id = ids.shift();
+      try { const info = await fetchVideoInfo(id); if (info.title) titles.set(id, info.title); } catch { /* 取れなくても再生には影響しない */ }
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  let n = 0;
+  for (const s of pl.songs) if (!s.article && titles.has(s.videoId)) { s.article = titles.get(s.videoId); n++; }
+  if (n) commit('data');
+  return n;
 }
 
 export function exportCSV(playlistId) {

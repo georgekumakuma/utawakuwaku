@@ -5,7 +5,7 @@ import { parseTime, formatTime, secToCSV } from '../src/core/time.js';
 import { parseYouTubeInput, extractVideoId } from '../src/core/ytid.js';
 import { csvToSongs, songsToCSV, parseCSVRows } from '../src/core/csv.js';
 import { parseSetlist, splitTitleArtist, songsToSetlist } from '../src/core/setlist.js';
-import { encodeShare, decodeShare } from '../src/core/share.js';
+import { encodeShare, decodeShare, shareHashOf, autoSceneTitle } from '../src/core/share.js';
 import { normalizeSong, migrateV2, uniqueName, sanitizeData } from '../src/core/model.js';
 
 test('parseTime: 各種形式', () => {
@@ -128,9 +128,11 @@ test('共有URL: 往復と旧形式', async () => {
     normalizeSong({ videoId: 'mHSFy9Bbpew', title: 'おちゃめ機能', start: 896, end: 1029, rating: 5, artist: 'ゴジマジP', tags: ['ボカロ'] })
   ];
   const hash = await encodeShare({ name: 'テスト', songs });
-  assert.ok(hash.startsWith('#pl2='));
+  assert.ok(hash.startsWith('#p3='));
   const back = await decodeShare(hash);
   assert.equal(back.name, 'テスト');
+  assert.equal(back.songs[0].article, '', '配信タイトルは URL に含めない（取り込み後に補う）');
+  assert.deepEqual(back.songs.map(s => [s.videoId, s.title, s.start, s.end, s.rating]), songs.map(s => [s.videoId, s.title, s.start, s.end, s.rating]));
   assert.equal(back.songs.length, 2);
   assert.equal(back.songs[1].artist, 'ゴジマジP');
   assert.deepEqual(back.songs[1].tags, ['ボカロ']);
@@ -140,6 +142,41 @@ test('共有URL: 往復と旧形式', async () => {
   const old = await decodeShare(legacy);
   assert.equal(old.songs[0].title, '旧');
   assert.equal(await decodeShare('#foo'), null);
+  // 旧形式 #pl2=（deflate 圧縮 JSON）も読める
+  const { deflateRawSync } = await import('node:zlib');
+  const pl2 = '#pl2=' + deflateRawSync(Buffer.from(JSON.stringify({ v: 2, n: '旧2', s: [['uvNqgBWckp4', 'X', 1, 9, 4, '枠']] }))).toString('base64url');
+  const o2 = await decodeShare(pl2);
+  assert.equal(o2.name, '旧2');
+  assert.equal(o2.songs[0].article, '枠');
+});
+
+test('共有URL p3: 小数・最後まで・記号を含む曲名・自動のシーン名・同じ動画の重複', async () => {
+  const songs = [
+    normalizeSong({ videoId: 'XkOsHdQLChA', title: 'XkOsHdQLChA_1h03m46s', start: 3826, end: 3886, rating: 5 }),
+    normalizeSong({ videoId: 'XkOsHdQLChA', title: 'XkOsHdQLChA_10m46s', start: 646, end: 706, rating: 5 }),
+    normalizeSong({ videoId: '_-ToOd3-DhI', title: 'A, B, C', start: 12.5, end: 0, rating: 0 }),
+    normalizeSong({ videoId: 'uvNqgBWckp4', title: '[ライブ] ~曲~', start: 1, end: 2.3 }),
+    normalizeSong({ videoId: 'uvNqgBWckp4', title: '~', start: 3, end: 4, note: 'メモ', singer: '歌' }),
+    normalizeSong({ videoId: 'mHSFy9Bbpew', title: '', start: 0, end: 30 })
+  ];
+  const back = await decodeShare(await encodeShare({ name: 'p3', songs }));
+  const key = (x) => x.map(s => [s.videoId, s.title, s.start, s.end, s.rating, s.singer, s.note]);
+  assert.deepEqual(key(back.songs), key(songs));
+  assert.equal(autoSceneTitle('XkOsHdQLChA', 646), 'XkOsHdQLChA_10m46s');
+  assert.equal(autoSceneTitle('XkOsHdQLChA', 3826), 'XkOsHdQLChA_1h03m46s');
+});
+
+test('共有URL p3: 同じ動画の短いシーンが多いリストは旧形式よりずっと短い', async () => {
+  const ids = Array.from({ length: 40 }, (_, i) => ('vid' + i).padEnd(11, 'x'));
+  const songs = Array.from({ length: 78 }, (_, i) => { const id = ids[i % 40]; const st = 600 + i * 97; return normalizeSong({ videoId: id, title: autoSceneTitle(id, st), start: st, end: st + 60, rating: 5, article: '【ゲーム実況】とても長い配信タイトルがここに入ります！！ #' + (i % 40) }); });
+  const hash = await encodeShare({ name: 'ダジャレ', songs });
+  assert.ok(hash.length < 1600, `p3 length ${hash.length}`);
+});
+
+test('共有URL: URL や文章から共有部分を取り出す', () => {
+  assert.equal(shareHashOf('https://utawakuwaku.netlify.app/#p3=abc_-9'), '#p3=abc_-9');
+  assert.equal(shareHashOf('見てね https://x.example/#pl2=QQ'), '#pl2=QQ');
+  assert.equal(shareHashOf('https://utawakuwaku.netlify.app/'), null);
 });
 
 test('モデル: 移行とユーティリティ', () => {
@@ -346,6 +383,7 @@ import { classifyText, tsvToCsv } from '../src/core/intake.js';
 test('貼り付けの判定', () => {
   assert.equal(classifyText(''), null);
   assert.equal(classifyText('こんにちは'), null);
+  assert.deepEqual(classifyText('https://utawakuwaku.netlify.app/#p3=abc'), { kind: 'share', hash: '#p3=abc' });
   assert.deepEqual(classifyText('https://youtu.be/uvNqgBWckp4?t=90'), { kind: 'url', url: 'https://youtu.be/uvNqgBWckp4?t=90' });
   const setlist = classifyText('https://www.youtube.com/watch?v=uvNqgBWckp4\nセトリ\n0:12 曲A\n4:30 曲B / 歌手');
   assert.equal(setlist.kind, 'setlist');

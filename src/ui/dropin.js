@@ -12,6 +12,7 @@ import { toast, toastError } from './toast.js';
 function route(text, { via }) {
   const c = classifyText(text);
   if (!c) return false;
+  if (c.kind === 'share') { actions.importSharedHash(c.hash); return true; }
   if (c.kind === 'url') openAddModal('url', { url: c.url });
   else if (c.kind === 'setlist') openAddModal('setlist', { url: c.url, text: c.text });
   else if (c.kind === 'csv') openAddModal('file', { text: c.text });
