@@ -6,4 +6,4 @@
 //   - API の制限: YouTube Data API v3 のみ
 //   - ウェブサイトの制限: https://utawakuwaku.netlify.app/* と http://localhost:3000/*
 // 手順は readme.md の「YouTube Data API キーの設定」を参照。空のままでも、ほかの機能は使える。
-export const YOUTUBE_API_KEY = '';
+export const YOUTUBE_API_KEY = 'AIzaSyCf4UkoOmWhTqtjrEpDsRZjtGrnCr0KQ9w';

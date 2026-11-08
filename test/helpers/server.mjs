@@ -14,6 +14,8 @@ export async function startServer() {
     const file = path.join(ROOT, p);
     if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); res.end('not found'); return; }
     res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
+    // テストでは本物の API キーを使わない（キー未設定の状態から始め、必要なテストだけ偽のキーを入れる）
+    if (p === '/src/app/config.js') { res.end(fs.readFileSync(file, 'utf8').replace(/YOUTUBE_API_KEY = '[^']*'/, "YOUTUBE_API_KEY = ''")); return; }
     fs.createReadStream(file).pipe(res);
   });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
