@@ -481,7 +481,7 @@ test('JSON バックアップ: 共有バンク・動画情報を含み、API キ
   assert.ok(!JSON.stringify(json).includes('SECRET'));
 });
 
-import { detectInApp, browserUrl, youtubeAppUrl, androidIntent } from '../src/core/inapp.js';
+import { detectInApp, browserUrl, youtubeAppUrl, androidIntent, escapeRoute, withExternalParam, menuSteps } from '../src/core/inapp.js';
 
 const UA = {
   xAndroid: 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/AP1A; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/124.0.0.0 Mobile Safari/537.36 TwitterAndroid',
@@ -513,4 +513,19 @@ test('inapp: 外へ出る URL（戻れなくならないよう失敗時の移動
   assert.equal(browserUrl('https://utawakuwaku.netlify.app/', 'ios'), 'x-safari-https://utawakuwaku.netlify.app/');
   assert.equal(browserUrl('https://a.b/', 'other'), null);
   assert.doesNotMatch(androidIntent('https://a.b/', 'p'), /browser_fallback_url/);
+});
+
+test('inapp: アプリごとの外への出方（X は案内のみ、LINE は公式パラメータ、Android の他アプリは intent）', () => {
+  assert.equal(escapeRoute(detectInApp(UA.xAndroid)), 'guide');
+  assert.equal(escapeRoute(detectInApp(UA.xIos)), 'guide');
+  assert.equal(escapeRoute(detectInApp(UA.line)), 'param');
+  assert.equal(escapeRoute({ name: 'Instagram', platform: 'android' }), 'intent');
+  assert.equal(escapeRoute({ name: 'Instagram', platform: 'ios' }), 'guide');
+  assert.equal(escapeRoute({ name: '', platform: 'android' }), 'intent');
+  assert.equal(escapeRoute(null), null);
+  assert.equal(withExternalParam('https://utawakuwaku.netlify.app/'), 'https://utawakuwaku.netlify.app/?openExternalBrowser=1');
+  assert.equal(withExternalParam('https://www.youtube.com/watch?v=abc&t=5s'), 'https://www.youtube.com/watch?v=abc&t=5s&openExternalBrowser=1');
+  assert.match(menuSteps({ name: 'X', platform: 'android' }).join(), /⋮[\s\S]*ブラウザで開く/);
+  assert.match(menuSteps({ name: 'X', platform: 'ios' }).join(), /Safariで開く/);
+  assert.equal(detectInApp('Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Barcelona 289.0').name, 'Threads');
 });
